@@ -1,1 +1,1424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Embakasi Garrison Comprehensive School Meal Management System — School Meal Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Libre+Franklin:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{
+  --ink:#1B3A34;
+  --ink-2:#24463F;
+  --ink-3:#163029;
+  --paper:#FBF7EE;
+  --card:#FFFFFF;
+  --maize:#E8A93D;
+  --maize-dark:#C88A22;
+  --leaf:#4C7A6B;
+  --leaf-soft:#DCE8E2;
+  --rust:#B84C3E;
+  --rust-soft:#F5DFDA;
+  --charcoal:#262421;
+  --muted:#6B675F;
+  --line:#E4DCC8;
+  --shadow: 0 1px 2px rgba(27,58,52,0.06), 0 6px 20px rgba(27,58,52,0.07);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Libre Franklin', sans-serif;
+  background:var(--paper);
+  color:var(--charcoal);
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{ font-family:'Zilla Slab', serif; margin:0; color:var(--ink); letter-spacing:-0.01em;}
+.mono{font-family:'IBM Plex Mono', monospace;}
+button{font-family:inherit; cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+::selection{ background: var(--maize); color:#fff;}
 
+/* ---------- App shell ---------- */
+#app{ display:flex; min-height:100vh; }
+.sidebar{
+  width:230px; flex-shrink:0; background:var(--ink);
+  color:#EFE9DA; display:flex; flex-direction:column;
+  position:sticky; top:0; height:100vh;
+}
+.brand{ padding:22px 20px 14px; border-bottom:1px solid rgba(255,255,255,0.08); }
+.brand .stamp{
+  width:38px;height:38px;border-radius:50%;border:2px dashed var(--maize);
+  display:flex;align-items:center;justify-content:center;font-family:'Zilla Slab',serif;
+  font-weight:700;color:var(--maize);font-size:16px;margin-bottom:8px;
+}
+.brand h1{ color:#fff; font-size:19px; line-height:1.15; }
+.brand p{ margin:4px 0 0; font-size:11.5px; color:#9FB8AF; letter-spacing:0.04em; text-transform:uppercase;}
+nav.navlist{ padding:14px 10px; display:flex; flex-direction:column; gap:2px; flex:1;}
+nav.navlist button{
+  all:unset; display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px;
+  color:#CBD9D3; font-size:14.5px; font-weight:500;
+}
+nav.navlist button .ic{ font-size:15px; width:18px; text-align:center;}
+nav.navlist button:hover{ background:rgba(255,255,255,0.06); color:#fff;}
+nav.navlist button.active{ background:var(--maize); color:var(--ink-3); font-weight:700;}
+.sidebar-foot{ padding:14px 18px 18px; font-size:11px; color:#7E9A90; border-top:1px solid rgba(255,255,255,0.08);}
+
+.content{ flex:1; min-width:0; display:flex; flex-direction:column;}
+.topbar{
+  background:var(--card); border-bottom:1px solid var(--line); padding:16px 28px;
+  display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:5;
+}
+.topbar h2{ font-size:22px; }
+.topbar .sub{ color:var(--muted); font-size:13px; margin-top:2px;}
+.view{ padding:26px 28px 60px; max-width:1240px; }
+
+/* ---------- generic bits ---------- */
+.grid{ display:grid; gap:16px; }
+.cols-4{ grid-template-columns:repeat(4,1fr); }
+.cols-3{ grid-template-columns:repeat(3,1fr); }
+.cols-2{ grid-template-columns:repeat(2,1fr); }
+@media (max-width:1000px){ .cols-4{grid-template-columns:repeat(2,1fr);} .cols-3{grid-template-columns:repeat(2,1fr);} }
+
+.stat-card{
+  background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 18px;
+  box-shadow:var(--shadow);
+}
+.stat-card .label{ font-size:11.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); font-weight:600;}
+.stat-card .value{ font-family:'Zilla Slab',serif; font-size:28px; color:var(--ink); margin-top:6px; font-weight:700;}
+.stat-card .delta{ font-size:12.5px; margin-top:6px; color:var(--leaf); font-weight:600;}
+.stat-card .delta.down{ color:var(--rust); }
+
+.panel{
+  background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px 22px;
+  box-shadow:var(--shadow); margin-bottom:18px;
+}
+.panel-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:10px; flex-wrap:wrap;}
+.panel-head h3{ font-size:17px; }
+.tag{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:99px; background:var(--leaf-soft); color:var(--leaf); }
+.tag.warn{ background:var(--rust-soft); color:var(--rust); }
+.tag.gold{ background:#FBEAC9; color:var(--maize-dark); }
+
+.btn{ border:none; border-radius:8px; padding:9px 16px; font-size:13.5px; font-weight:600; display:inline-flex; align-items:center; gap:6px; }
+.btn-primary{ background:var(--maize); color:var(--ink-3); }
+.btn-primary:hover{ background:var(--maize-dark); }
+.btn-ghost{ background:transparent; color:var(--ink); border:1px solid var(--line); }
+.btn-ghost:hover{ background:var(--leaf-soft); }
+.btn-danger{ background:var(--rust-soft); color:var(--rust); }
+.btn-danger:hover{ background:#eec6bd; }
+.btn-sm{ padding:6px 11px; font-size:12.5px; border-radius:7px;}
+.btn:disabled{ opacity:0.5; cursor:not-allowed; }
+
+input[type=text], input[type=number], input[type=date], input[type=search], select, textarea{
+  border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:13.5px; color:var(--charcoal);
+  background:#fff; width:100%;
+}
+input:focus, select:focus, textarea:focus{ outline:2px solid var(--maize); outline-offset:1px; border-color:var(--maize); }
+label{ font-size:12.5px; font-weight:600; color:var(--ink); display:block; margin-bottom:5px;}
+.field{ margin-bottom:12px; }
+.field-row{ display:flex; gap:12px; }
+.field-row > *{ flex:1; }
+
+table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+thead th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); padding:8px 10px; border-bottom:2px solid var(--line); }
+tbody td{ padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:middle;}
+tbody tr:hover{ background:#FAF6EA; }
+.balance-low{ color:var(--rust); font-weight:700; }
+.balance-ok{ color:var(--leaf); font-weight:700; }
+
+.pill-input{ position:relative; }
+.search-row{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.search-row > *{ min-width:160px; }
+.search-row .grow{ flex:1; min-width:220px;}
+
+.empty{ text-align:center; padding:40px 20px; color:var(--muted); }
+.empty h4{ color:var(--ink); margin-bottom:6px;}
+
+.modal-bg{ position:fixed; inset:0; background:rgba(22,48,41,0.45); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px;}
+.modal{ background:var(--card); border-radius:14px; max-width:560px; width:100%; max-height:90vh; overflow:auto; padding:24px 26px; box-shadow:0 20px 60px rgba(0,0,0,0.25);}
+.modal h3{ font-size:19px; margin-bottom:14px;}
+.modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px;}
+
+.toast-wrap{ position:fixed; bottom:20px; right:20px; z-index:80; display:flex; flex-direction:column; gap:8px;}
+.toast{ background:var(--ink); color:#fff; padding:11px 16px; border-radius:9px; font-size:13.5px; box-shadow:var(--shadow); border-left:4px solid var(--maize); animation:slidein 0.2s ease;}
+.toast.error{ border-left-color:var(--rust); }
+@keyframes slidein{ from{ transform:translateX(20px); opacity:0;} to{transform:translateX(0); opacity:1;} }
+
+.loading-screen{ position:fixed; inset:0; background:var(--paper); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; z-index:200;}
+.spinner{ width:34px; height:34px; border-radius:50%; border:3px solid var(--line); border-top-color:var(--maize); animation:spin 0.8s linear infinite;}
+@keyframes spin{ to{ transform:rotate(360deg);} }
+
+/* ---------- meal card ---------- */
+.mealcard{
+  width:84mm; height:54mm; border-radius:8px; background:linear-gradient(135deg,#fff,#FBF4E2);
+  border:1.4px solid var(--ink); position:relative; padding:8px 9px; overflow:hidden;
+  display:flex; flex-direction:column; justify-content:space-between; color:var(--ink);
+  box-shadow:var(--shadow);
+}
+.mealcard::before{
+  content:""; position:absolute; right:-16px; top:-16px; width:70px; height:70px; border-radius:50%;
+  border:2.5px dashed var(--maize); opacity:0.55;
+}
+.mealcard .mc-top{ display:flex; justify-content:space-between; align-items:flex-start; }
+.mealcard .mc-school{ font-family:'Zilla Slab',serif; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:0.03em; max-width:65%;}
+.mealcard .mc-badge{ background:var(--ink); color:var(--maize); font-size:8px; font-weight:700; padding:3px 6px; border-radius:5px; letter-spacing:0.04em;}
+.mealcard .mc-name{ font-family:'Zilla Slab',serif; font-weight:700; font-size:14px; margin-top:5px; line-height:1.1;}
+.mealcard .mc-meta{ font-size:8.8px; color:var(--muted); margin-top:3px; display:flex; gap:8px; flex-wrap:wrap;}
+.mealcard .mc-valid-title{font-size:7px;text-transform:uppercase;font-weight:700;letter-spacing:.05em;color:var(--muted);margin-top:3px;}
+.mealcard .mc-days{display:flex;gap:3px;align-items:center;margin-top:3px;flex-wrap:wrap;}
+.mealcard .mc-day{width:18px;height:18px;border:1px solid var(--ink);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;background:#fff;position:relative;flex:0 0 auto;}
+.mealcard .mc-day.active{background:var(--maize);border-color:var(--maize-dark);color:var(--ink-3);}
+.mealcard .mc-day.past{opacity:.38;}
+.mealcard .mc-day small{position:absolute;top:18px;font-size:5px;color:var(--muted);font-weight:500;}
+.mealcard .mc-pay{margin-top:4px;border:1px solid #E4D1A6;border-radius:5px;background:#FFF9EA;padding:3px 5px;font-size:5.8px;line-height:1.35;color:var(--muted);}
+.mealcard .mc-pay b{display:block;color:var(--ink);font-size:5.8px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px;}
+.mealcard .mc-bottom{ display:flex; justify-content:space-between; align-items:flex-end; }
+.mealcard .mc-num{ font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; letter-spacing:0.04em;}
+.mealcard .mc-line{ font-size:6.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;}
+.card-grid-print{ display:flex; flex-direction:column; align-items:center; gap:4mm; }
+
+@media print{
+  body *{ visibility:hidden; }
+  #print-area, #print-area *{ visibility:visible; }
+  #print-area{ position:absolute; left:0; top:0; width:100%; padding:8mm;}
+  .mealcard{ box-shadow:none; break-inside:avoid; }
+  .learner-print-sheet{padding:10mm;color:#222;font-family:Arial,sans-serif;}
+  @page{ margin:8mm; }
+}
+
+.chart-bars{ display:flex; align-items:flex-end; gap:8px; height:140px; padding-top:10px; }
+.chart-bars .bar-wrap{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; }
+.chart-bars .bar{ width:100%; background:var(--leaf); border-radius:5px 5px 0 0; min-height:3px; }
+.chart-bars .bar.today{ background:var(--maize); }
+.chart-bars .bar-label{ font-size:10.5px; color:var(--muted); }
+.chart-bars .bar-val{ font-size:10px; color:var(--ink); font-weight:600;}
+
+.sms-box{ background:#F5F0E1; border:1px dashed var(--line); border-radius:9px; padding:12px 14px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; white-space:pre-wrap; color:var(--ink);}
+.kv{ display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line); font-size:13px;}
+.kv .k{ color:var(--muted); }
+.kv .v{ font-weight:600; }
+
+.badge-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px;}
+.tabs{ display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--line); }
+.tabs button{ all:unset; padding:9px 16px; font-size:13.5px; font-weight:600; color:var(--muted); border-bottom:2px solid transparent; cursor:pointer;}
+.tabs button.active{ color:var(--ink); border-bottom-color:var(--maize); }
+
+.pagination{ display:flex; align-items:center; gap:8px; justify-content:flex-end; margin-top:12px; font-size:13px; color:var(--muted);}
+.pagination button{ background:none; border:1px solid var(--line); border-radius:6px; padding:5px 10px;}
+.pagination button:disabled{ opacity:0.4; }
+
+.dropzone{ border:2px dashed var(--line); border-radius:10px; padding:26px; text-align:center; color:var(--muted); font-size:13.5px; }
+.dropzone.drag{ border-color:var(--maize); background:#FBF4E2; }
+.helptext{ font-size:12px; color:var(--muted); margin-top:5px; }
+
+.learner-print-sheet{background:#fff;color:#222;max-width:760px;margin:auto;padding:20px;}
+.learner-print-sheet h1{font-size:24px;margin-bottom:4px;}
+.learner-print-sheet h2{font-size:18px;margin-bottom:18px;}
+.print-kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #ddd;font-size:13px;}
+.print-kv b{color:#555;}
+
+#loginScreen{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 20% 20%,rgba(232,169,61,.12),transparent 32%),radial-gradient(circle at 80% 80%,rgba(76,122,107,.16),transparent 35%),#10231f;}
+.login-box{width:390px;max-width:calc(100% - 34px);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:34px;box-shadow:0 25px 80px rgba(0,0,0,.45);backdrop-filter:blur(14px);animation:loginIn .6s ease;}
+.login-logo{width:68px;height:68px;border-radius:18px;background:var(--maize);color:var(--ink-3);display:flex;align-items:center;justify-content:center;font-family:'Zilla Slab',serif;font-size:25px;font-weight:700;margin:0 auto 16px;box-shadow:0 0 30px rgba(232,169,61,.25);}
+.login-box h2{text-align:center;color:#fff;font-size:26px;margin:0;}
+.login-box p{text-align:center;color:#b9cbc4;font-size:12px;margin:6px 0 25px;}
+.login-field{margin-bottom:15px;}
+.login-field label{color:#dce8e2;margin-bottom:6px;}
+.login-field input{background:rgba(0,0,0,.25)!important;color:#fff!important;border:1px solid rgba(255,255,255,.18)!important;}
+.login-field input::placeholder{color:#91a69e!important;}
+.login-btn{width:100%;padding:12px;border:0;border-radius:9px;background:var(--maize);color:var(--ink-3);font-weight:700;font-size:14px;cursor:pointer;}
+.login-btn:hover{background:#f0b957;}
+.login-error{display:none;background:rgba(184,76,62,.18);border:1px solid rgba(255,150,130,.25);color:#ffb7a8;border-radius:8px;padding:9px;text-align:center;font-size:12px;margin-bottom:12px;}
+.login-error.show{display:block;}
+#loginScreen.hidden{opacity:0;visibility:hidden;pointer-events:none;transition:.45s ease;}
+@keyframes loginIn{from{opacity:0;transform:translateY(20px) scale(.97)}to{opacity:1;transform:none}}
+.login-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 18px;
+    display: block;
+}
+</style>
+</head>
+<body>
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+    <img src="login-logo.png" alt="">
+</div>
+    <h2>EMBAKASI</h2>
+    <p>Garrison Comprehensive School · Meal Management System</p>
+    <div class="login-error" id="loginError">Incorrect username or password.</div>
+    <div class="login-field"><label>Username</label><input type="text" id="loginUser" placeholder="Enter username" autocomplete="username"></div>
+    <div class="login-field"><label>Password</label><input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password"></div>
+    <button class="login-btn" id="loginBtn">LOGIN</button>
+  </div>
+</div>
+
+
+<div id="loading" class="loading-screen"><div class="spinner"></div><div style="font-family:'Zilla Slab',serif;color:var(--ink);font-size:15px;">Opening the ledger…</div></div>
+
+<div id="app" style="display:none;">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="stamp">CC</div>
+      <h1>Embakasi Garrison MealManagement System</h1>
+      <p>Meal Wallet Ledger</p>
+    </div>
+    <nav class="navlist" id="nav"></nav>
+    <div class="sidebar-foot" id="sidebarFoot">View learners · shared ledger</div>
+  </aside>
+  <div class="content">
+    <div class="topbar">
+      <div>
+        <h2 id="viewTitle">Dashboard</h2>
+        <div class="sub" id="viewSub">Today, everything at a glance</div>
+      </div>
+      <div id="topbarActions"></div>
+    </div>
+    <div class="view" id="viewRoot"></div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div id="printArea" style="display:none;"></div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* =========================================================
+   CHAKULA CARD — school meal wallet ledger
+   Single-file app. Data persisted via window.storage (shared).
+   ========================================================= */
+
+const SHARED = true; // school-wide shared ledger, visible to all staff using this artifact
+
+let STATE = {
+  learners: [],      // {id, card_no, adm, name, klass, stream, gender, balance, created_at, valid_from, validity_days}
+  txnMonths: [],     // ["2026-08", ...]
+  txnCache: {},      // { "2026-08": [ {id, learner_id, amount, ref, date, method, note, entered_by} ] }
+  settings: { school_name: "Your School", daily_rate: 80, card_prefix: "MC" },
+  view: 'dashboard',
+  loaded: false
+};
+
+/* ---------------- storage helpers ---------------- */
+async function storeGet(key, fallback){
+  try{
+    const raw = localStorage.getItem('embakasi_'+key);
+    if(raw === null) return fallback;
+    return JSON.parse(raw);
+  }catch(e){ return fallback; }
+}
+async function storeSet(key, value){
+  try{
+    localStorage.setItem('embakasi_'+key, JSON.stringify(value));
+    return true;
+  }catch(e){ toast('Storage error saving "'+key+'"', true); return null; }
+}
+
+async function loadAll(){
+  STATE.learners = await storeGet('learners', []);
+  STATE.settings = await storeGet('settings', STATE.settings);
+  STATE.txnMonths = await storeGet('txn_months', []);
+  for(const m of STATE.txnMonths){
+    STATE.txnCache[m] = await storeGet('txns:'+m, []);
+  }
+  STATE.loaded = true;
+}
+
+async function ensureMonthLoaded(monthKey){
+  if(STATE.txnCache[monthKey]) return STATE.txnCache[monthKey];
+  const data = await storeGet('txns:'+monthKey, []);
+  STATE.txnCache[monthKey] = data;
+  return data;
+}
+
+async function saveLearners(){ await storeSet('learners', STATE.learners); }
+async function saveSettings(){ await storeSet('settings', STATE.settings); }
+async function saveMonth(monthKey){
+  await storeSet('txns:'+monthKey, STATE.txnCache[monthKey] || []);
+  if(!STATE.txnMonths.includes(monthKey)){
+    STATE.txnMonths.push(monthKey);
+    STATE.txnMonths.sort();
+    await storeSet('txn_months', STATE.txnMonths);
+  }
+}
+
+/* ---------------- utils ---------------- */
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function monthKeyOf(dateStr){ return dateStr.slice(0,7); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtMoney(n){ return 'KSh ' + Number(n||0).toLocaleString('en-KE', {maximumFractionDigits:0}); }
+function fmtDate(d){ const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}); }
+function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function toast(msg, isError){
+  const wrap = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast'+(isError?' error':'');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(()=>{ el.remove(); }, 3800);
+}
+
+function nextCardNumber(){
+  const prefix = STATE.settings.card_prefix || 'MC';
+  let max = 0;
+  STATE.learners.forEach(l=>{
+    const m = (l.card_no||'').match(/(\d+)$/);
+    if(m) max = Math.max(max, parseInt(m[1],10));
+  });
+  return prefix + '-' + String(max+1).padStart(6,'0');
+}
+
+function findLearner(id){ return STATE.learners.find(l=>l.id===id); }
+
+function allTxnsFlat(){
+  let out = [];
+  for(const m of STATE.txnMonths){
+    out = out.concat((STATE.txnCache[m]||[]).map(t=>({...t, month:m})));
+  }
+  return out.sort((a,b)=> a.date < b.date ? 1 : -1);
+}
+
+function txnsInRange(startISO, endISO){
+  return allTxnsFlat().filter(t=> t.date >= startISO && t.date <= endISO);
+}
+
+function startOfWeek(d){
+  const dt = new Date(d);
+  const day = (dt.getDay()+6)%7; // Monday=0
+  dt.setDate(dt.getDate()-day);
+  return dt.toISOString().slice(0,10);
+}
+
+/* =========================================================
+   MEAL CARD VALIDITY HELPERS
+   ========================================================= */
+const DEFAULT_VALIDITY_DAYS = 13;
+
+function addSchoolDays(startISO, count){
+  const dates = [];
+  const d = new Date((startISO || todayISO()) + 'T00:00:00');
+  while(dates.length < count){
+    const day = d.getDay();
+    if(day !== 0 && day !== 6) dates.push(d.toISOString().slice(0,10));
+    d.setDate(d.getDate()+1);
+  }
+  return dates;
+}
+
+function learnerMealDays(l){
+  const rate = Number(STATE.settings.daily_rate || 80);
+  const balance = Math.max(0, Number(l.balance || 0));
+  return rate > 0 ? Math.floor(balance / rate) : 0;
+}
+
+function learnerMealBalance(l){
+  const rate = Number(STATE.settings.daily_rate || 80);
+  const balance = Math.max(0, Number(l.balance || 0));
+  return rate > 0 ? balance % rate : balance;
+}
+
+function learnerValidDates(l){
+  const mealDays = learnerMealDays(l);
+  return mealDays > 0 ? addSchoolDays(todayISO(), mealDays) : [];
+}
+
+/* =========================================================
+   NAVIGATION
+   ========================================================= */
+const NAV_ITEMS = [
+  {id:'dashboard', label:'Dashboard', icon:'&#9670;'},
+  {id:'learners', label:'Learners', icon:'&#9787;'},
+  {id:'payments', label:'Payments', icon:'&#8383;'},
+  {id:'reports', label:'Reports', icon:'&#9636;'},
+  {id:'cards', label:'Meal Cards', icon:'&#9635;'},
+  {id:'settings', label:'Settings', icon:'&#9881;'},
+];
+const VIEW_TITLES = {
+  dashboard:['Dashboard','Today, everything at a glance'],
+  learners:['Learners','View learners · register, import, search'],
+  payments:['Payments','Verify a bank notification and credit a wallet'],
+  reports:['Reports','Daily, weekly, monthly and termly collections'],
+  cards:['Meal Cards','Generate and print meal wallet cards'],
+  settings:['Settings','School details and defaults'],
+};
+
+function renderNav(){
+  const nav = document.getElementById('nav');
+  nav.innerHTML = NAV_ITEMS.map(it=>
+    `<button data-view="${it.id}" class="${STATE.view===it.id?'active':''}"><span class="ic">${it.icon}</span>${it.label}</button>`
+  ).join('');
+  nav.querySelectorAll('button').forEach(b=>{
+    b.onclick = ()=> setView(b.dataset.view);
+  });
+}
+
+function setView(v){
+  STATE.view = v;
+  renderNav();
+  document.getElementById('viewTitle').textContent = VIEW_TITLES[v][0];
+  document.getElementById('viewSub').textContent = VIEW_TITLES[v][1];
+  document.getElementById('topbarActions').innerHTML = '';
+  const root = document.getElementById('viewRoot');
+  root.innerHTML = '';
+  ({
+    dashboard: renderDashboard,
+    learners: renderLearners,
+    payments: renderPayments,
+    reports: renderReports,
+    cards: renderCards,
+    settings: renderSettings,
+  })[v](root);
+  const actions = document.getElementById('topbarActions');
+  if(actions){
+    const out = document.createElement('button');
+    out.className='btn btn-ghost btn-sm';
+    out.textContent='Logout';
+    out.style.marginLeft='8px';
+    out.onclick=logoutUser;
+    actions.appendChild(out);
+  }
+}
+
+/* =========================================================
+   MODAL helper
+   ========================================================= */
+function openModal(html, onMount){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `<div class="modal-bg" id="modalBg"><div class="modal">${html}</div></div>`;
+  document.getElementById('modalBg').addEventListener('mousedown', (e)=>{
+    if(e.target.id==='modalBg') closeModal();
+  });
+  if(onMount) onMount(root);
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+
+/* =========================================================
+   LOGIN
+   ========================================================= */
+const LOGIN_USER = 'embgarr';
+const LOGIN_PASS = 'Emba@2026';
+
+function showAppAfterLogin(){
+  document.getElementById('loginScreen').classList.add('hidden');
+}
+
+function logoutUser(){
+  sessionStorage.removeItem('embakasi_logged_in');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginUser').value='';
+  document.getElementById('loginPass').value='';
+  document.getElementById('loginError').classList.remove('show');
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const btn=document.getElementById('loginBtn');
+  const doLogin=()=>{
+    const u=document.getElementById('loginUser').value.trim();
+    const p=document.getElementById('loginPass').value;
+    const err=document.getElementById('loginError');
+    if(u===LOGIN_USER && p===LOGIN_PASS){
+      sessionStorage.setItem('embakasi_logged_in','true');
+      err.classList.remove('show');
+      showAppAfterLogin();
+    }else{
+      err.classList.add('show');
+    }
+  };
+  btn.onclick=doLogin;
+  document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+  document.getElementById('loginUser').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('loginPass').focus();});
+  if(sessionStorage.getItem('embakasi_logged_in')==='true') showAppAfterLogin();
+});
+
+/* =========================================================
+   INIT
+   ========================================================= */
+(async function init(){
+  await loadAll();
+  document.getElementById('loading').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('sidebarFoot').textContent = STATE.learners.length.toLocaleString()+' learners · shared ledger';
+  renderNav();
+  setView('dashboard');
+})();
+</script>
+<script>
+/* =========================================================
+   VIEW: DASHBOARD
+   ========================================================= */
+function renderDashboard(root){
+  const today = todayISO();
+  const weekStart = startOfWeek(today);
+  const monthStart = today.slice(0,7)+'-01';
+
+  const todayTxns = txnsInRange(today, today);
+  const weekTxns = txnsInRange(weekStart, today);
+  const monthTxns = txnsInRange(monthStart, today);
+  const sum = arr => arr.reduce((a,t)=>a+Number(t.amount||0),0);
+  const totalBalance = STATE.learners.reduce((a,l)=>a+Number(l.balance||0),0);
+  const lowBalance = STATE.learners.filter(l=> Number(l.balance||0) < Number(STATE.settings.daily_rate||80)).length;
+
+  // last 7 days trend
+  const days = [];
+  for(let i=6;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const iso = d.toISOString().slice(0,10);
+    days.push({iso, label: d.toLocaleDateString('en-GB',{weekday:'short'}), total: sum(txnsInRange(iso,iso))});
+  }
+  const maxDay = Math.max(1, ...days.map(d=>d.total));
+
+  // by class today
+  const byClass = {};
+  monthTxns.forEach(t=>{
+    const l = findLearner(t.learner_id);
+    const k = l ? (l.klass||'—') : '—';
+    byClass[k] = (byClass[k]||0) + Number(t.amount||0);
+  });
+  const classRows = Object.entries(byClass).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+  root.innerHTML = `
+    <div class="grid cols-4" style="margin-bottom:18px;">
+      <div class="stat-card">
+        <div class="label">Collected Today</div>
+        <div class="value">${fmtMoney(sum(todayTxns))}</div>
+        <div class="delta">${todayTxns.length} payment${todayTxns.length===1?'':'s'}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">This Week</div>
+        <div class="value">${fmtMoney(sum(weekTxns))}</div>
+        <div class="delta">${weekTxns.length} payments · since Mon</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">This Month</div>
+        <div class="value">${fmtMoney(sum(monthTxns))}</div>
+        <div class="delta">${monthTxns.length} payments</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Wallet Balance</div>
+        <div class="value">${fmtMoney(totalBalance)}</div>
+        <div class="delta ${lowBalance>0?'down':''}">${lowBalance} learner${lowBalance===1?'':'s'} below ${fmtMoney(STATE.settings.daily_rate||80)}</div>
+      </div>
+    </div>
+
+    <div class="grid cols-2">
+      <div class="panel">
+        <div class="panel-head"><h3>Last 7 days</h3><span class="tag">Collections</span></div>
+        <div class="chart-bars">
+          ${days.map(d=>`
+            <div class="bar-wrap">
+              <div class="bar-val">${d.total? Math.round(d.total/1000*10)/10+'k' : ''}</div>
+              <div class="bar ${d.iso===today?'today':''}" style="height:${Math.max(4,(d.total/maxDay)*110)}px;"></div>
+              <div class="bar-label">${d.label}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Top classes this month</h3><span class="tag gold">By collection</span></div>
+        ${classRows.length? classRows.map(([k,v])=>`
+          <div class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${fmtMoney(v)}</span></div>
+        `).join('') : '<div class="empty">No payments recorded yet this month.</div>'}
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head">
+        <h3>Recent payments</h3>
+        <button class="btn btn-primary btn-sm" id="goPayments">+ Record payment</button>
+      </div>
+      ${renderTxnTable(allTxnsFlat().slice(0,8))}
+    </div>
+  `;
+  document.getElementById('goPayments').onclick = ()=> setView('payments');
+}
+
+function renderTxnTable(txns){
+  if(!txns.length) return '<div class="empty"><h4>No payments yet</h4>Payments you record will show up here.</div>';
+  return `<table><thead><tr><th>Date</th><th>Learner</th><th>Class</th><th>Amount</th><th>Ref</th><th>Method</th></tr></thead><tbody>
+    ${txns.map(t=>{
+      const l = findLearner(t.learner_id);
+      return `<tr>
+        <td>${fmtDate(t.date)}</td>
+        <td>${l?escapeHtml(l.name):'<em>Unknown learner</em>'}</td>
+        <td>${l?escapeHtml(l.klass||''):''}</td>
+        <td class="mono">${fmtMoney(t.amount)}</td>
+        <td class="mono">${escapeHtml(t.ref||'—')}</td>
+        <td><span class="tag ${t.method==='sms'?'gold':''}">${t.method==='sms'?'Pasted SMS':'Manual'}</span></td>
+      </tr>`;
+    }).join('')}
+  </tbody></table>`;
+}
+
+/* =========================================================
+   VIEW: LEARNERS
+   ========================================================= */
+let learnersPage = 1;
+const LEARNERS_PER_PAGE = 25;
+let learnerFilter = { q:'', name:'', adm:'', klass:'', gender:'', sort:'name' };
+
+function renderLearners(root){
+  document.getElementById('topbarActions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" id="btnImport">Import CSV/Excel</button>
+    <button class="btn btn-primary btn-sm" id="btnAddLearner" style="margin-left:8px;">+ Register learner</button>
+  `;
+  const classes = [...new Set(STATE.learners.map(l=>l.klass).filter(Boolean))].sort();
+  root.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>Find & manage learners</h3><span class="tag">${STATE.learners.length} registered</span></div>
+      <div class="search-row">
+        <input type="search" class="grow" id="q" placeholder="Search by admission number or name…" value="${escapeHtml(learnerFilter.q)}">
+        <select id="fClass">
+          <option value="">Filter by class</option>
+          ${classes.map(c=>`<option value="${escapeHtml(c)}" ${learnerFilter.klass===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+        </select>
+        <select id="fGender">
+          <option value="">Filter by gender</option>
+          <option value="Male" ${learnerFilter.gender==='Male'?'selected':''}>Male</option>
+          <option value="Female" ${learnerFilter.gender==='Female'?'selected':''}>Female</option>
+          <option value="Other" ${learnerFilter.gender==='Other'?'selected':''}>Other</option>
+        </select>
+        <select id="fSort">
+          <option value="name" ${learnerFilter.sort==='name'?'selected':''}>Sort: Name A–Z</option>
+          <option value="nameDesc" ${learnerFilter.sort==='nameDesc'?'selected':''}>Sort: Name Z–A</option>
+          <option value="adm" ${learnerFilter.sort==='adm'?'selected':''}>Sort: Admission</option>
+          <option value="class" ${learnerFilter.sort==='class'?'selected':''}>Sort: Class</option>
+        </select>
+      </div>
+      <div id="learnerTableWrap"></div>
+    </div>
+  `;
+  document.getElementById('q').oninput = (e)=>{ learnerFilter.q = e.target.value; learnersPage=1; drawLearnerTable(); };
+  document.getElementById('fClass').onchange = (e)=>{ learnerFilter.klass = e.target.value; learnersPage=1; drawLearnerTable(); };
+  document.getElementById('fGender').onchange = (e)=>{ learnerFilter.gender = e.target.value; learnersPage=1; drawLearnerTable(); };
+  document.getElementById('fSort').onchange = (e)=>{ learnerFilter.sort = e.target.value; learnersPage=1; drawLearnerTable(); };
+  document.getElementById('btnImport').onclick = openImportModal;
+  document.getElementById('btnAddLearner').onclick = ()=> openLearnerFormModal(null);
+  drawLearnerTable();
+}
+
+function filteredLearners(){
+  const q = learnerFilter.q.trim().toLowerCase();
+  let list = STATE.learners.filter(l=>{
+    if(learnerFilter.klass && l.klass !== learnerFilter.klass) return false;
+    if(learnerFilter.gender && (l.gender||'') !== learnerFilter.gender) return false;
+    if(q && !(l.name||'').toLowerCase().includes(q) && !String(l.adm||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const cmp = (a,b)=>String(a||'').localeCompare(String(b||''), undefined, {numeric:true, sensitivity:'base'});
+  if(learnerFilter.sort==='name') list.sort((a,b)=>cmp(a.name,b.name));
+  if(learnerFilter.sort==='nameDesc') list.sort((a,b)=>cmp(b.name,a.name));
+  if(learnerFilter.sort==='adm') list.sort((a,b)=>cmp(a.adm,b.adm));
+  if(learnerFilter.sort==='class') list.sort((a,b)=>cmp(a.klass,b.klass)||cmp(a.name,b.name));
+  return list;
+}
+
+function drawLearnerTable(){
+  const wrap = document.getElementById('learnerTableWrap');
+  if(!wrap) return;
+  const list = filteredLearners();
+  const totalPages = Math.max(1, Math.ceil(list.length/LEARNERS_PER_PAGE));
+  learnersPage = Math.min(learnersPage, totalPages);
+  const start = (learnersPage-1)*LEARNERS_PER_PAGE;
+  const pageItems = list.slice(start, start+LEARNERS_PER_PAGE);
+  const rate = Number(STATE.settings.daily_rate||80);
+
+  wrap.innerHTML = `
+    <div style="overflow:auto;">
+      <table>
+        <thead><tr><th>Card No.</th><th>Name</th><th>Adm No.</th><th>Class</th><th>Gender</th><th>Stream</th><th>Balance</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${pageItems.length? pageItems.map(l=>`
+            <tr>
+              <td class="mono">${escapeHtml(l.card_no)}</td>
+              <td><strong>${escapeHtml(l.name)}</strong></td>
+              <td class="mono">${escapeHtml(l.adm)}</td>
+              <td>${escapeHtml(l.klass||'')}</td>
+              <td>${escapeHtml(l.gender||'—')}</td>
+              <td>${escapeHtml(l.stream||'')}</td>
+              <td class="${Number(l.balance)<rate?'balance-low':'balance-ok'}">${fmtMoney(l.balance)}</td>
+              <td style="white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm" data-act="view" data-id="${l.id}">Profile</button>
+                <button class="btn btn-ghost btn-sm" data-act="edit" data-id="${l.id}">Edit</button>
+                <button class="btn btn-danger btn-sm" data-act="delete" data-id="${l.id}">Delete</button>
+                <button class="btn btn-primary btn-sm" data-act="print" data-id="${l.id}">Print</button>
+              </td>
+            </tr>`).join('') : `<tr><td colspan="8"><div class="empty"><h4>No learners match</h4>Try clearing the search or filter.</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <span>${list.length.toLocaleString()} learner${list.length===1?'':'s'}</span>
+      <button id="pPrev" ${learnersPage<=1?'disabled':''}>&larr; Prev</button>
+      <span>Page ${learnersPage} of ${totalPages}</span>
+      <button id="pNext" ${learnersPage>=totalPages?'disabled':''}>Next &rarr;</button>
+    </div>
+  `;
+  wrap.querySelectorAll('[data-act="view"]').forEach(b=> b.onclick = ()=> openLearnerProfile(b.dataset.id));
+  wrap.querySelectorAll('[data-act="edit"]').forEach(b=> b.onclick = ()=> openLearnerFormModal(findLearner(b.dataset.id)));
+  wrap.querySelectorAll('[data-act="delete"]').forEach(b=> b.onclick = async ()=>{
+    const l=findLearner(b.dataset.id);
+    if(!l || !confirm('Delete '+l.name+' (Admission '+l.adm+')? This cannot be undone.')) return;
+    STATE.learners=STATE.learners.filter(x=>x.id!==l.id);
+    await saveLearners();
+    toast('Learner deleted');
+    drawLearnerTable();
+  });
+  wrap.querySelectorAll('[data-act="print"]').forEach(b=> b.onclick = ()=> printLearnerDetails(findLearner(b.dataset.id)));
+  const prev = document.getElementById('pPrev'), next = document.getElementById('pNext');
+  if(prev) prev.onclick = ()=>{ learnersPage--; drawLearnerTable(); };
+  if(next) next.onclick = ()=>{ learnersPage++; drawLearnerTable(); };
+}
+
+function openLearnerFormModal(learner){
+  const isEdit = !!learner;
+  openModal(`
+    <h3>${isEdit?'Edit learner':'Register learner'}</h3>
+    <div class="field"><label>Full name</label><input type="text" id="fName" value="${isEdit?escapeHtml(learner.name):''}"></div>
+    <div class="field-row">
+      <div class="field"><label>Admission number</label><input type="text" id="fAdm" value="${isEdit?escapeHtml(learner.adm):''}"></div>
+      <div class="field"><label>Gender</label><select id="fGender">
+        <option value="">Select gender</option>
+        <option value="Male" ${isEdit&&learner.gender==='Male'?'selected':''}>Male</option>
+        <option value="Female" ${isEdit&&learner.gender==='Female'?'selected':''}>Female</option>
+        <option value="Other" ${isEdit&&learner.gender==='Other'?'selected':''}>Other</option>
+      </select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Class</label><input type="text" id="fKlass" value="${isEdit?escapeHtml(learner.klass||''):''}"></div>
+      <div class="field"><label>Stream (optional)</label><input type="text" id="fStream" value="${isEdit?escapeHtml(learner.stream||''):''}"></div>
+    </div>
+    <div class="field"><label>Opening balance (KSh)</label><input type="number" id="fBal" value="${isEdit?learner.balance:0}"></div>
+    ${isEdit? `<div class="helptext">Meal card number: <strong class="mono">${escapeHtml(learner.card_no)}</strong></div>`:''}
+    <div class="modal-actions">
+      ${isEdit? '<button class="btn btn-danger" id="btnDelLearner">Delete</button>':''}
+      <button class="btn btn-ghost" id="btnCancel">Cancel</button>
+      <button class="btn btn-primary" id="btnSaveLearner">${isEdit?'Save changes':'Register & issue card'}</button>
+    </div>
+  `, ()=>{
+    document.getElementById('btnCancel').onclick = closeModal;
+    if(isEdit){
+      document.getElementById('btnDelLearner').onclick = async ()=>{
+        if(!confirm('Delete '+learner.name+' (Admission '+learner.adm+')? This cannot be undone.')) return;
+        STATE.learners = STATE.learners.filter(l=>l.id!==learner.id);
+        await saveLearners();
+        closeModal(); toast('Learner deleted'); drawLearnerTable();
+      };
+    }
+    document.getElementById('btnSaveLearner').onclick = async ()=>{
+      const name = document.getElementById('fName').value.trim();
+      const adm = document.getElementById('fAdm').value.trim();
+      const gender = document.getElementById('fGender').value;
+      const klass = document.getElementById('fKlass').value.trim();
+      const stream = document.getElementById('fStream').value.trim();
+      const bal = Number(document.getElementById('fBal').value || 0);
+      if(!name || !adm){ toast('Name and admission number are required', true); return; }
+      if(isEdit){
+        Object.assign(learner, {name, adm, gender, klass, stream, balance:bal});
+      } else {
+        if(STATE.learners.some(l=>String(l.adm).toLowerCase()===adm.toLowerCase())){
+          toast('That admission number is already registered', true); return;
+        }
+        STATE.learners.push({
+          id: uid(), card_no: nextCardNumber(), adm, name, gender, klass, stream,
+          balance: bal, created_at: todayISO(), valid_from: todayISO(), validity_days: DEFAULT_VALIDITY_DAYS
+        });
+      }
+      await saveLearners();
+      closeModal();
+      toast(isEdit?'Learner updated':'Learner registered and card issued');
+      if(STATE.view==='learners') drawLearnerTable();
+    };
+  });
+}
+
+function printLearnerDetails(l){
+  if(!l) return;
+  const history = allTxnsFlat().filter(t=>t.learner_id===l.id);
+  const area = document.getElementById('printArea');
+  area.innerHTML = `
+    <div class="learner-print-sheet">
+      <h1>${escapeHtml(STATE.settings.school_name||'School')}</h1>
+      <h2>Learner Details</h2>
+      <div class="print-kv"><b>Name</b><span>${escapeHtml(l.name)}</span></div>
+      <div class="print-kv"><b>Admission Number</b><span>${escapeHtml(l.adm)}</span></div>
+      <div class="print-kv"><b>Class</b><span>${escapeHtml(l.klass||'—')}</span></div>
+      <div class="print-kv"><b>Gender</b><span>${escapeHtml(l.gender||'—')}</span></div>
+      <div class="print-kv"><b>Stream</b><span>${escapeHtml(l.stream||'—')}</span></div>
+      <div class="print-kv"><b>Meal Card</b><span>${escapeHtml(l.card_no)}</span></div>
+      <div class="print-kv"><b>Balance</b><span>${fmtMoney(l.balance)}</span></div>
+      <div class="print-kv"><b>Valid From</b><span>${fmtDate(l.valid_from||l.created_at||todayISO())}</span></div>
+      <div class="print-kv"><b>Valid Days</b><span>${Number(l.validity_days||DEFAULT_VALIDITY_DAYS)} school days</span></div>
+      <h3>Payment Records</h3>
+      ${history.length ? renderTxnTable(history) : '<p>No payment records.</p>'}
+    </div>`;
+  area.id='print-area';
+  area.style.display='block';
+  setTimeout(()=>{ window.print(); area.style.display='none'; area.id='printArea'; },80);
+}
+
+function openLearnerProfile(id){
+  const l = findLearner(id);
+  if(!l) return;
+  const history = allTxnsFlat().filter(t=>t.learner_id===id);
+  const total = history.reduce((a,t)=>a+Number(t.amount||0),0);
+  openModal(`
+    <h3>${escapeHtml(l.name)}</h3>
+    <div class="kv"><span class="k">Meal card no.</span><span class="v mono">${escapeHtml(l.card_no)}</span></div>
+    <div class="kv"><span class="k">Admission no.</span><span class="v mono">${escapeHtml(l.adm)}</span></div>
+    <div class="kv"><span class="k">Class / Stream</span><span class="v">${escapeHtml(l.klass||'—')} ${escapeHtml(l.stream||'')}</span></div>
+    <div class="kv"><span class="k">Current balance</span><span class="v">${fmtMoney(l.balance)}</span></div>
+    <div class="kv"><span class="k">Lifetime paid in</span><span class="v">${fmtMoney(total)}</span></div>
+    <h4 style="margin-top:16px;font-size:14px;">Payment history</h4>
+    <div style="max-height:220px;overflow:auto;margin-top:8px;">
+      ${history.length? renderTxnTable(history) : '<div class="empty">No payments recorded for this learner yet.</div>'}
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btnClose">Close</button>
+      <button class="btn btn-ghost" id="btnPrintDetails">Print details</button><button class="btn btn-ghost" id="btnPrintOne">Print card</button>
+      <button class="btn btn-primary" id="btnPayNow">Record payment</button>
+    </div>
+  `, ()=>{
+    document.getElementById('btnClose').onclick = closeModal;
+    document.getElementById('btnPrintDetails').onclick = ()=>{ closeModal(); printLearnerDetails(l); };
+    document.getElementById('btnPrintOne').onclick = ()=>{ closeModal(); printCards([l]); };
+    document.getElementById('btnPayNow').onclick = ()=>{ closeModal(); setView('payments'); setTimeout(()=>selectLearnerForManualPay(l.id), 50); };
+  });
+}
+
+/* ---------------- CSV / Excel import ---------------- */
+function openImportModal(){
+  openModal(`
+    <h3>Import learners</h3>
+    <p style="font-size:13px;color:var(--muted);margin-top:-6px;">Upload a CSV or Excel-exported CSV with columns for admission number, name, class and (optionally) stream. Column names are matched automatically.</p>
+    <div class="dropzone" id="dz">
+      <input type="file" id="fileInput" accept=".csv,.txt" style="display:none;">
+      <div>Drag a CSV file here, or</div>
+      <button class="btn btn-ghost btn-sm" id="btnBrowse" style="margin-top:8px;">Choose file</button>
+      <div class="helptext">Tip: export your Excel sheet as CSV first (File → Save As → CSV).</div>
+    </div>
+    <div id="importPreview"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btnCancelImport">Cancel</button>
+      <button class="btn btn-primary" id="btnConfirmImport" disabled>Import 0 learners</button>
+    </div>
+  `, ()=>{
+    let parsedRows = [];
+    const dz = document.getElementById('dz');
+    const fileInput = document.getElementById('fileInput');
+    document.getElementById('btnBrowse').onclick = ()=> fileInput.click();
+    document.getElementById('btnCancelImport').onclick = closeModal;
+    ['dragover','dragenter'].forEach(evt=> dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(evt=> dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.remove('drag'); }));
+    dz.addEventListener('drop', e=>{
+      const f = e.dataTransfer.files[0];
+      if(f) handleFile(f);
+    });
+    fileInput.onchange = ()=>{ if(fileInput.files[0]) handleFile(fileInput.files[0]); };
+
+    function pick(row, candidates){
+      const keys = Object.keys(row);
+      for(const c of candidates){
+        const k = keys.find(k=>k.trim().toLowerCase().replace(/[^a-z0-9]/g,'') === c);
+        if(k) return row[k];
+      }
+      return '';
+    }
+    function handleFile(f){
+      Papa.parse(f, {
+        header:true, skipEmptyLines:true,
+        complete: (res)=>{
+          parsedRows = res.data.map(row=>({
+            adm: String(pick(row,['admissionno','admission','admno','admissionnumber','adm']) || '').trim(),
+            name: String(pick(row,['name','fullname','learnername','studentname']) || '').trim(),
+            klass: String(pick(row,['class','klass','grade']) || '').trim(),
+            stream: String(pick(row,['stream']) || '').trim(),
+          })).filter(r=>r.adm && r.name);
+          const dupCount = parsedRows.filter(r=> STATE.learners.some(l=>String(l.adm).toLowerCase()===r.adm.toLowerCase())).length;
+          document.getElementById('importPreview').innerHTML = `
+            <div class="panel" style="margin-top:12px;">
+              <div style="font-size:13.5px;margin-bottom:8px;"><strong>${parsedRows.length}</strong> learners found in file ${dupCount? `· <span style="color:var(--rust);">${dupCount} already registered (will be skipped)</span>`:''}</div>
+              <div style="max-height:180px;overflow:auto;">
+                <table><thead><tr><th>Adm No.</th><th>Name</th><th>Class</th><th>Gender</th><th>Stream</th></tr></thead>
+                <tbody>${parsedRows.slice(0,8).map(r=>`<tr><td class="mono">${escapeHtml(r.adm)}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.klass)}</td><td>${escapeHtml(r.gender||'')}</td><td>${escapeHtml(r.stream)}</td></tr>`).join('')}</tbody></table>
+              </div>
+              ${parsedRows.length>8? `<div class="helptext">…and ${parsedRows.length-8} more</div>`:''}
+            </div>
+          `;
+          const btn = document.getElementById('btnConfirmImport');
+          const newCount = parsedRows.length - dupCount;
+          btn.disabled = newCount<=0;
+          btn.textContent = `Import ${newCount} learner${newCount===1?'':'s'}`;
+        }
+      });
+    }
+    document.getElementById('btnConfirmImport').onclick = async ()=>{
+      let added = 0;
+      for(const r of parsedRows){
+        if(STATE.learners.some(l=>String(l.adm).toLowerCase()===r.adm.toLowerCase())) continue;
+        STATE.learners.push({
+          id: uid(), card_no: nextCardNumber(), adm:r.adm, name:r.name, klass:r.klass, stream:r.stream,
+          balance:0, created_at: todayISO()
+        });
+        added++;
+      }
+      await saveLearners();
+      closeModal();
+      toast(added+' learners imported and cards issued');
+      document.getElementById('sidebarFoot').textContent = STATE.learners.length.toLocaleString()+' learners · shared ledger';
+      if(STATE.view==='learners') drawLearnerTable();
+    };
+  });
+}
+
+/* =========================================================
+   VIEW: PAYMENTS
+   ========================================================= */
+let paymentsTab = 'manual';
+let manualSelectedLearner = null;
+
+function renderPayments(root){
+  root.innerHTML = `
+    <div class="tabs">
+      <button data-t="manual" class="${paymentsTab==='manual'?'active':''}">Manual verification</button>
+      <button data-t="sms" class="${paymentsTab==='sms'?'active':''}">Paste bank notification</button>
+    </div>
+    <div id="payBody"></div>
+  `;
+  root.querySelectorAll('.tabs button').forEach(b=> b.onclick = ()=>{ paymentsTab=b.dataset.t; renderPayments(root); });
+  paymentsTab==='manual' ? drawManualPay() : drawSmsPay();
+}
+
+function drawManualPay(){
+  const body = document.getElementById('payBody');
+  body.innerHTML = `
+    <div class="grid cols-2">
+      <div class="panel">
+        <div class="panel-head"><h3>1. Find the learner</h3></div>
+        <div class="field"><label>Search by admission no., name, or class</label><input type="text" id="mSearch" placeholder="e.g. 1150, John Doe, or 7B"></div>
+        <div id="mResults" style="max-height:280px;overflow:auto;"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>2. Enter the payment</h3></div>
+        <div id="mSelected" style="margin-bottom:12px;"></div>
+        <div class="field"><label>Amount received (KSh)</label><input type="number" id="mAmount" placeholder="80" min="1"></div>
+        <div class="field-row">
+          <div class="field"><label>Transaction reference</label><input type="text" id="mRef" placeholder="e.g. QGH7XJ9K2L"></div>
+          <div class="field"><label>Date received</label><input type="date" id="mDate" value="${todayISO()}"></div>
+        </div>
+        <button class="btn btn-primary" id="mSubmit" style="width:100%;justify-content:center;" disabled>Credit wallet</button>
+      </div>
+    </div>
+  `;
+  const search = document.getElementById('mSearch');
+  search.oninput = ()=> drawManualResults(search.value);
+  drawManualResults('');
+  refreshManualSelected();
+  document.getElementById('mSubmit').onclick = submitManualPayment;
+}
+
+function drawManualResults(q){
+  const el = document.getElementById('mResults');
+  q = q.trim().toLowerCase();
+  const list = !q ? STATE.learners.slice(0,8) : STATE.learners.filter(l=>
+    (l.name||'').toLowerCase().includes(q) || String(l.adm).toLowerCase().includes(q) || (l.klass||'').toLowerCase().includes(q)
+  ).slice(0,20);
+  el.innerHTML = list.length? list.map(l=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 6px;border-bottom:1px solid var(--line);">
+      <div><strong>${escapeHtml(l.name)}</strong><div class="helptext">Adm ${escapeHtml(l.adm)} · ${escapeHtml(l.klass||'—')} · ${fmtMoney(l.balance)}</div></div>
+      <button class="btn btn-ghost btn-sm" data-id="${l.id}">Select</button>
+    </div>`).join('') : '<div class="empty">No matching learners</div>';
+  el.querySelectorAll('button[data-id]').forEach(b=> b.onclick = ()=> selectLearnerForManualPay(b.dataset.id));
+}
+
+function selectLearnerForManualPay(id){
+  manualSelectedLearner = id;
+  refreshManualSelected();
+}
+function refreshManualSelected(){
+  const wrap = document.getElementById('mSelected');
+  if(!wrap) return;
+  const l = manualSelectedLearner ? findLearner(manualSelectedLearner) : null;
+  wrap.innerHTML = l ? `
+    <div style="background:var(--leaf-soft);border-radius:8px;padding:10px 12px;">
+      <strong>${escapeHtml(l.name)}</strong><br>
+      <span class="helptext">Adm ${escapeHtml(l.adm)} · ${escapeHtml(l.klass||'—')} · Card ${escapeHtml(l.card_no)} · Balance ${fmtMoney(l.balance)}</span>
+    </div>` : `<div class="helptext">No learner selected yet — pick one from the search results on the left.</div>`;
+  const submitBtn = document.getElementById('mSubmit');
+  if(submitBtn) submitBtn.disabled = !l;
+}
+
+async function submitManualPayment(){
+  const l = findLearner(manualSelectedLearner);
+  const amount = Number(document.getElementById('mAmount').value);
+  const ref = document.getElementById('mRef').value.trim();
+  const date = document.getElementById('mDate').value || todayISO();
+  if(!l){ toast('Select a learner first', true); return; }
+  if(!amount || amount<=0){ toast('Enter a valid amount', true); return; }
+  await creditWallet(l, amount, ref, date, 'manual');
+  toast(`${fmtMoney(amount)} credited to ${l.name}`);
+  document.getElementById('mAmount').value='';
+  document.getElementById('mRef').value='';
+  manualSelectedLearner = null;
+  refreshManualSelected();
+  drawManualResults(document.getElementById('mSearch').value);
+}
+
+async function creditWallet(learner, amount, ref, date, method, note){
+  const mk = monthKeyOf(date);
+  await ensureMonthLoaded(mk);
+  STATE.txnCache[mk] = STATE.txnCache[mk] || [];
+  STATE.txnCache[mk].push({ id: uid(), learner_id: learner.id, amount, ref: ref||'', date, method, note: note||'' });
+  learner.balance = Number(learner.balance||0) + Number(amount);
+  await saveMonth(mk);
+  await saveLearners();
+}
+
+/* ---------------- Paste SMS parsing ---------------- */
+function parseBankSms(text){
+  const out = { amount:null, ref:null, date:null, klass:null, adm:null, firstName:null, rawAccount:null };
+  const t = text.replace(/\u00a0/g,' ');
+
+  const amtMatch = t.match(/Ksh\.?\s?([\d,]+(?:\.\d{1,2})?)/i) || t.match(/KES\.?\s?([\d,]+(?:\.\d{1,2})?)/i);
+  if(amtMatch) out.amount = parseFloat(amtMatch[1].replace(/,/g,''));
+
+  const refMatch = t.match(/^\s*([A-Z0-9]{8,12})\s+Confirmed/i) || t.match(/\b([A-Z]{2}[A-Z0-9]{7,10})\b/);
+  if(refMatch) out.ref = refMatch[1].toUpperCase();
+
+  const acctMatch = t.match(/account\s*(?:number)?\s*[:\-]?\s*([A-Za-z0-9#]+)/i);
+  if(acctMatch) out.rawAccount = acctMatch[1];
+  else {
+    // fall back: look for a #-joined token like 20405060#7B1150john
+    const hashMatch = t.match(/\d+#([A-Za-z0-9]+)/);
+    if(hashMatch) out.rawAccount = hashMatch[1];
+  }
+  if(out.rawAccount){
+    const m = out.rawAccount.match(/^(\d{0,2}[A-Za-z]{0,2})(\d{2,6})([A-Za-z]*)$/);
+    if(m){
+      out.klass = m[1] || null;
+      out.adm = m[2] || null;
+      out.firstName = m[3] || null;
+    }
+  }
+  const dateMatch = t.match(/on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i) || t.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+  if(dateMatch){
+    const parts = dateMatch[1].split('/').map(x=>parseInt(x,10));
+    let [d,mo,y] = parts;
+    if(y<100) y += 2000;
+    out.date = `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+  return out;
+}
+
+function drawSmsPay(){
+  const body = document.getElementById('payBody');
+  body.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>Paste the bank / M-Pesa notification</h3><span class="tag gold">Reduces typing errors</span></div>
+      <textarea id="smsText" rows="4" placeholder="Paste the SMS text from the school phone here, e.g.
+QGH7XJ9K2L Confirmed. Ksh800.00 received from JOHN DOE 0712345678 for account 20405060#7B1150john on 21/8/26 at 2:41 PM"></textarea>
+      <div style="margin-top:10px;"><button class="btn btn-primary btn-sm" id="btnParse">Extract details</button></div>
+    </div>
+    <div id="smsResult"></div>
+  `;
+  document.getElementById('btnParse').onclick = ()=>{
+    const text = document.getElementById('smsText').value.trim();
+    if(!text){ toast('Paste a notification first', true); return; }
+    const parsed = parseBankSms(text);
+    drawSmsResult(parsed, text);
+  };
+}
+
+function drawSmsResult(parsed, rawText){
+  const el = document.getElementById('smsResult');
+  let matched = null;
+  if(parsed.adm){
+    matched = STATE.learners.find(l=> String(l.adm)===String(parsed.adm) && (!parsed.klass || (l.klass||'').toLowerCase().includes(parsed.klass.toLowerCase())))
+           || STATE.learners.find(l=> String(l.adm)===String(parsed.adm));
+  }
+  el.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>Confirm details</h3></div>
+      <div class="sms-box" style="margin-bottom:14px;">${escapeHtml(rawText)}</div>
+      <div class="grid cols-2">
+        <div>
+          <div class="field"><label>Amount (KSh)</label><input type="number" id="sAmount" value="${parsed.amount||''}"></div>
+          <div class="field"><label>Transaction reference</label><input type="text" id="sRef" value="${parsed.ref||''}"></div>
+          <div class="field"><label>Date</label><input type="date" id="sDate" value="${parsed.date||todayISO()}"></div>
+        </div>
+        <div>
+          <div class="field"><label>Search &amp; confirm learner</label><input type="text" id="sSearch" placeholder="Search by name, adm no, class" value="${matched?matched.name:(parsed.adm||'')}"></div>
+          <div id="sResults" style="max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;"></div>
+          <div id="sSelected" style="margin-top:10px;"></div>
+        </div>
+      </div>
+      <div class="modal-actions" style="margin-top:6px;">
+        <button class="btn btn-primary" id="sSubmit" style="width:100%;justify-content:center;" disabled>Confirm &amp; credit wallet</button>
+      </div>
+    </div>
+  `;
+  let selected = matched ? matched.id : null;
+  function drawResults(q){
+    q=(q||'').trim().toLowerCase();
+    const list = !q? STATE.learners.slice(0,8) : STATE.learners.filter(l=>
+      (l.name||'').toLowerCase().includes(q) || String(l.adm).toLowerCase().includes(q) || (l.klass||'').toLowerCase().includes(q)
+    ).slice(0,15);
+    document.getElementById('sResults').innerHTML = list.length? list.map(l=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line);${selected===l.id?'background:var(--leaf-soft);':''}">
+        <div style="font-size:13px;"><strong>${escapeHtml(l.name)}</strong> <span class="helptext">Adm ${escapeHtml(l.adm)} · ${escapeHtml(l.klass||'—')}</span></div>
+        <button class="btn btn-ghost btn-sm" data-id="${l.id}">${selected===l.id?'Selected':'Pick'}</button>
+      </div>`).join('') : '<div class="empty">No matches</div>';
+    document.getElementById('sResults').querySelectorAll('button[data-id]').forEach(b=> b.onclick = ()=>{
+      selected = b.dataset.id; drawResults(document.getElementById('sSearch').value); updateSelectedPanel();
+    });
+  }
+  function updateSelectedPanel(){
+    const l = selected ? findLearner(selected) : null;
+    document.getElementById('sSelected').innerHTML = l? `<div class="tag" style="background:var(--leaf-soft);">Will credit: <strong>${escapeHtml(l.name)}</strong> · ${fmtMoney(l.balance)} current balance</div>` : (parsed.adm? `<div class="tag warn">No learner found for admission "${escapeHtml(parsed.adm)}" — search and pick manually.</div>` : '');
+    document.getElementById('sSubmit').disabled = !l;
+  }
+  document.getElementById('sSearch').oninput = (e)=> drawResults(e.target.value);
+  drawResults(matched? matched.name : (parsed.adm||''));
+  updateSelectedPanel();
+
+  document.getElementById('sSubmit').onclick = async ()=>{
+    const l = findLearner(selected);
+    const amount = Number(document.getElementById('sAmount').value);
+    const ref = document.getElementById('sRef').value.trim();
+    const date = document.getElementById('sDate').value || todayISO();
+    if(!l){ toast('Confirm a learner first', true); return; }
+    if(!amount || amount<=0){ toast('Enter a valid amount', true); return; }
+    await creditWallet(l, amount, ref, date, 'sms', rawText.slice(0,200));
+    toast(`${fmtMoney(amount)} credited to ${l.name}`);
+    document.getElementById('smsText').value='';
+    document.getElementById('smsResult').innerHTML='';
+  };
+}
+
+/* =========================================================
+   VIEW: REPORTS
+   ========================================================= */
+let reportRange = { start: todayISO(), end: todayISO(), preset:'today' };
+
+function applyPreset(p){
+  const today = todayISO();
+  if(p==='today'){ reportRange = {start:today,end:today,preset:p}; }
+  if(p==='week'){ reportRange = {start:startOfWeek(today),end:today,preset:p}; }
+  if(p==='month'){ reportRange = {start:today.slice(0,7)+'-01', end:today, preset:p}; }
+  if(p==='term'){
+    const d = new Date(); d.setMonth(d.getMonth()-3);
+    reportRange = {start:d.toISOString().slice(0,10), end:today, preset:p};
+  }
+}
+
+function renderReports(root){
+  root.innerHTML = `
+    <div class="panel">
+      <div class="search-row">
+        <button class="btn btn-ghost btn-sm" data-p="today">Today</button>
+        <button class="btn btn-ghost btn-sm" data-p="week">This week</button>
+        <button class="btn btn-ghost btn-sm" data-p="month">This month</button>
+        <button class="btn btn-ghost btn-sm" data-p="term">This term (approx.)</button>
+        <span style="flex:1;"></span>
+        <input type="date" id="rStart" value="${reportRange.start}">
+        <span style="align-self:center;color:var(--muted);">to</span>
+        <input type="date" id="rEnd" value="${reportRange.end}">
+        <button class="btn btn-primary btn-sm" id="rApply">Apply</button>
+        <button class="btn btn-ghost btn-sm" id="rExport">Export CSV</button>
+      </div>
+    </div>
+    <div id="reportBody"></div>
+  `;
+  root.querySelectorAll('[data-p]').forEach(b=> b.onclick = ()=>{ applyPreset(b.dataset.p); renderReports(root); });
+  document.getElementById('rApply').onclick = ()=>{
+    reportRange.start = document.getElementById('rStart').value;
+    reportRange.end = document.getElementById('rEnd').value;
+    reportRange.preset='custom';
+    drawReportBody();
+  };
+  document.getElementById('rExport').onclick = exportReportCsv;
+  drawReportBody();
+}
+
+function drawReportBody(){
+  const el = document.getElementById('reportBody');
+  const txns = txnsInRange(reportRange.start, reportRange.end);
+  const total = txns.reduce((a,t)=>a+Number(t.amount||0),0);
+  const byClass = {};
+  const byLearner = {};
+  txns.forEach(t=>{
+    const l = findLearner(t.learner_id);
+    const k = l? (l.klass||'—') : '—';
+    byClass[k] = (byClass[k]||0)+Number(t.amount||0);
+    if(l){ byLearner[l.id] = (byLearner[l.id]||0)+Number(t.amount||0); }
+  });
+  const classRows = Object.entries(byClass).sort((a,b)=>b[1]-a[1]);
+
+  el.innerHTML = `
+    <div class="grid cols-3" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="label">Total collected</div><div class="value">${fmtMoney(total)}</div><div class="delta">${fmtDate(reportRange.start)} – ${fmtDate(reportRange.end)}</div></div>
+      <div class="stat-card"><div class="label">Payments recorded</div><div class="value">${txns.length}</div><div class="delta">${new Set(txns.map(t=>t.learner_id)).size} learners paid</div></div>
+      <div class="stat-card"><div class="label">Average payment</div><div class="value">${fmtMoney(txns.length? total/txns.length : 0)}</div></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <div class="panel-head"><h3>Collections by class</h3></div>
+        ${classRows.length? `<table><thead><tr><th>Class</th><th>Amount</th></tr></thead><tbody>
+          ${classRows.map(([k,v])=>`<tr><td>${escapeHtml(k)}</td><td class="mono">${fmtMoney(v)}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty">No payments in this range.</div>'}
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Individual learner history</h3></div>
+        <input type="text" id="hSearch" placeholder="Search a learner to view their full history…">
+        <div id="hResult" style="margin-top:10px;"></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head"><h3>All payments in range</h3></div>
+      ${renderTxnTable(txns)}
+    </div>
+  `;
+  document.getElementById('hSearch').oninput = (e)=>{
+    const q = e.target.value.trim().toLowerCase();
+    const box = document.getElementById('hResult');
+    if(!q){ box.innerHTML=''; return; }
+    const l = STATE.learners.find(l=>(l.name||'').toLowerCase().includes(q) || String(l.adm).toLowerCase().includes(q));
+    if(!l){ box.innerHTML = '<div class="empty">No match</div>'; return; }
+    const hist = allTxnsFlat().filter(t=>t.learner_id===l.id);
+    box.innerHTML = `<div class="helptext" style="margin-bottom:8px;">${escapeHtml(l.name)} · Adm ${escapeHtml(l.adm)} · Balance ${fmtMoney(l.balance)}</div>` + renderTxnTable(hist);
+  };
+}
+
+function exportReportCsv(){
+  const txns = txnsInRange(reportRange.start, reportRange.end);
+  const rows = [['Date','Learner','Admission No','Class','Amount','Reference','Method']];
+  txns.forEach(t=>{
+    const l = findLearner(t.learner_id);
+    rows.push([t.date, l?l.name:'Unknown', l?l.adm:'', l?l.klass:'', t.amount, t.ref||'', t.method]);
+  });
+  const csv = rows.map(r=> r.map(c=> `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `collections_${reportRange.start}_to_${reportRange.end}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* =========================================================
+   VIEW: MEAL CARDS
+   ========================================================= */
+function renderCards(root){
+  const classes = [...new Set(STATE.learners.map(l=>l.klass).filter(Boolean))].sort();
+  root.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>Bulk print meal cards</h3><span class="tag">ID-card size · 85.6 × 54mm</span></div>
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;">Cards print two-up on A4 with cutting guides — well under the half-A5 size, so more fit per sheet.</p>
+      <div class="search-row">
+        <select id="cClass">
+          <option value="">All learners (${STATE.learners.length})</option>
+          ${classes.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)} only</option>`).join('')}
+        </select>
+        <button class="btn btn-primary btn-sm" id="cPrint">Print cards</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Preview</h3></div>
+      <div id="cardPreview" style="display:flex;flex-wrap:wrap;gap:14px;"></div>
+    </div>
+  `;
+  function draw(){
+    const klass = document.getElementById('cClass').value;
+    const list = klass? STATE.learners.filter(l=>l.klass===klass) : STATE.learners;
+    document.getElementById('cardPreview').innerHTML = list.slice(0,6).map(l=>cardHtml(l)).join('') + (list.length>6? `<div class="helptext" style="align-self:center;">+ ${list.length-6} more will print</div>`:'');
+  }
+  document.getElementById('cClass').onchange = draw;
+  document.getElementById('cPrint').onclick = ()=>{
+    const klass = document.getElementById('cClass').value;
+    const list = klass? STATE.learners.filter(l=>l.klass===klass) : STATE.learners;
+    if(!list.length){ toast('No learners to print', true); return; }
+    printCards(list);
+  };
+  draw();
+}
+
+function cardHtml(l){
+  const rate = Number(STATE.settings.daily_rate || 80);
+  const amountPaid = Math.max(0, Number(l.balance || 0));
+  const mealDays = learnerMealDays(l);
+  const balance = learnerMealBalance(l);
+  const validDates = learnerValidDates(l);
+  const startDate = validDates[0] || todayISO();
+  const endDate = validDates.length ? validDates[validDates.length-1] : startDate;
+  const validityLabel = mealDays === 1 ? '1 SCHOOL DAY' : mealDays + ' SCHOOL DAYS';
+  return `<div class="mealcard">
+    <div class="mc-top">
+      <div class="mc-school">${escapeHtml(STATE.settings.school_name||'School')}</div>
+      <div class="mc-badge">MEAL CARD</div>
+    </div>
+    <div>
+      <div class="mc-name">${escapeHtml(l.name)}</div>
+      <div class="mc-meta"><span>Adm ${escapeHtml(l.adm)}</span><span>${escapeHtml(l.klass||'')} ${escapeHtml(l.stream||'')}</span></div>
+      <div class="mc-valid-title">VALID SCHOOL DAYS · ${fmtDate(startDate)}${mealDays ? ' — ' + fmtDate(endDate) : ''}</div>
+      <div class="mc-valid-title">NUMBER OF DAYS: ${mealDays} · AMOUNT PAID: ${fmtMoney(amountPaid)} · KSh ${rate}/DAY</div>
+      <div class="mc-days">
+        ${mealDays ? validDates.map((d,i)=>{
+          const dayNum=new Date(d+'T00:00:00').getDate();
+          return `<div class="mc-day ${i===0?'active':''}" title="${fmtDate(d)}">${dayNum}<small>${i+1}</small></div>`;
+        }).join('') : '<span class="helptext">No meal days available</span>'}
+      </div>
+      <div class="mc-pay"><b>Payment Instructions</b>Paybill: 074074 · Account: ${escapeHtml(l.adm)} · Stream: ${escapeHtml(l.stream||'—')} · Admission No.: ${escapeHtml(l.adm)}</div>
+    </div>
+    <div class="mc-bottom">
+      <div><div class="mc-line">Card Number</div><div class="mc-num">${escapeHtml(l.card_no)}</div></div>
+      <div style="text-align:right;"><div class="mc-line">${validityLabel}</div><div class="mc-num">BAL ${fmtMoney(balance)}</div></div>
+    </div>
+  </div>`;
+}
+
+function printCards(list){
+  const area = document.getElementById('printArea');
+  area.innerHTML = `<div class="card-grid-print">${list.map(l=>cardHtml(l)).join('')}</div>`;
+  area.id = 'print-area';
+  area.style.display='block';
+  setTimeout(()=>{ window.print(); area.style.display='none'; area.id='printArea'; }, 80);
+}
+
+/* =========================================================
+   VIEW: SETTINGS
+   ========================================================= */
+function renderSettings(root){
+  const s = STATE.settings;
+  root.innerHTML = `
+    <div class="panel" style="max-width:520px;">
+      <div class="panel-head"><h3>School &amp; defaults</h3></div>
+      <div class="field"><label>School name (shown on meal cards)</label><input type="text" id="sSchool" value="${escapeHtml(s.school_name)}"></div>
+      <div class="field-row">
+        <div class="field"><label>Standard daily meal rate (KSh)</label><input type="number" id="sRate" value="${s.daily_rate}"></div>
+        <div class="field"><label>Meal card prefix</label><input type="text" id="sPrefix" value="${escapeHtml(s.card_prefix)}"></div>
+      </div>
+      <div class="helptext">The daily rate is only used to flag low balances — parents can still pay any amount, for any number of days, at any time.</div>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn btn-primary" id="sSave">Save settings</button>
+      </div>
+    </div>
+    <div class="panel" style="max-width:520px;">
+      <div class="panel-head"><h3>Ledger size</h3></div>
+      <div class="kv"><span class="k">Learners registered</span><span class="v">${STATE.learners.length.toLocaleString()}</span></div>
+      <div class="kv"><span class="k">Months with payment records</span><span class="v">${STATE.txnMonths.length}</span></div>
+      <div class="kv"><span class="k">Total payments recorded</span><span class="v">${allTxnsFlat().length.toLocaleString()}</span></div>
+    </div>
+  `;
+  document.getElementById('sSave').onclick = async ()=>{
+    STATE.settings.school_name = document.getElementById('sSchool').value.trim() || 'School';
+    STATE.settings.daily_rate = Number(document.getElementById('sRate').value)||80;
+    STATE.settings.card_prefix = document.getElementById('sPrefix').value.trim().toUpperCase() || 'MC';
+    await saveSettings();
+    toast('Settings saved');
+  };
+}
+</script>
+</body>
+</html>
