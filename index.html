@@ -1640,6 +1640,9 @@ body.dark .sidebar{background:#050F22}body.dark input,body.dark select,body.dark
  table.rt td.nov{display:none}table.rt td.ttl{font-size:1.02rem;justify-content:flex-start;text-align:left}table.rt td.ttl::before{display:none}
  table.rt td[data-label=""]::before{display:none}table.rt td[colspan]{display:block;text-align:center}
 }
+.modal-bg{z-index:1200!important}.modal{padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+.modal-actions{position:sticky;bottom:-24px;background:var(--card);padding:12px 0 4px;flex-wrap:wrap;z-index:2}
+@media(max-width:991px){.modal-actions .btn{flex:1 1 40%}}
 @media print{.bnav,#moreSheet,.scrim,#menuBtn{display:none!important}}
 `; document.head.appendChild(s); })();
 document.querySelector('meta[name="viewport"]').content = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
@@ -1664,7 +1667,7 @@ scrim.onclick = closeSide;
 $('nav').addEventListener('click', e => { if(e.target.closest('button')) closeSide(); });
 window.addEventListener('resize', () => { if(window.innerWidth >= 992) closeSide(); });
 window.addEventListener('orientationchange', closeSide);
-document.addEventListener('keydown', e => { if(e.key === 'Escape') closeSide(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closeSide(); closeModal(); } });
 
 /* ---------- teacher phone layout: bottom nav + More sheet (same pattern as the cleaner portal) ---------- */
 const bn = document.createElement('nav'), more = document.createElement('div');
@@ -1682,7 +1685,7 @@ function markNav(v){ document.body.classList.toggle('cl', !isAdmin());
   bn.innerHTML = BN.map(b => '<a data-k="' + b[0] + '" class="' + (v === b[0] ? 'on' : '') + '"><b>' + b[2] + '</b>' + b[1] + '</a>').join('') + '<a data-k="more" class="' + (BN.some(b => b[0] === v) ? '' : 'on') + '"><b>&#8943;</b>More</a>';
   bn.querySelectorAll('a').forEach(a => a.onclick = () => a.dataset.k === 'more' ? openMore() : setView(a.dataset.k)); }
 const _sv3 = window.setView;
-window.setView = function(v){ closeSide(); _sv3(v); markNav(v); window.scrollTo(0, 0); };
+window.setView = function(v){ closeSide(); closeModal(); _sv3(v); markNav(v); window.scrollTo(0, 0); };
 
 /* ---------- phone: turn every table row into a card (labels taken from the column headings) ---------- */
 function cardify(){ document.querySelectorAll('#viewRoot table:not(.rt),#modalRoot table:not(.rt)').forEach(t => {
