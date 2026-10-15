@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Embakasi Garrison Comprehensive School Meal Management System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0B2B5B">
+<title>Embakasi Garrison Comprehensive School Meal Management System — School Meal Ledger</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Libre+Franklin:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<link rel="icon" type="image/png" href="favcon.png">
-  <style>
+<style>
 :root{
   --ink:#1B3A34;--ink-2:#24463F;--ink-3:#163029;--paper:#FBF7EE;--card:#FFFFFF;
   --maize:#E8A93D;--maize-dark:#C88A22;--leaf:#4C7A6B;--leaf-soft:#DCE8E2;
@@ -186,31 +186,6 @@ tbody tr:hover{ background:#FAF6EA; }
 .login-error.show{display:block;}
 #loginScreen.hidden{opacity:0;visibility:hidden;pointer-events:none;transition:.45s ease;}
 @keyframes loginIn{from{opacity:0;transform:translateY(20px) scale(.97)}to{opacity:1;transform:none}}
-    
-.login-footer {
-    position: fixed;
-    bottom: 12px;
-    left: 0;
-    width: 100%;
-    text-align: center;
-    color: #888888;
-    font-size: 13px;
-    font-family: Arial, sans-serif;
-    z-index: 1000;
-}
-
-.login-footer span {
-    color: #2563eb;
-    font-weight: bold;
-    letter-spacing: 0.5px;
-}
-
-@media (max-width: 480px) {
-    .login-footer {
-        font-size: 12px;
-        bottom: 8px;
-    }
-}
 </style>
 </head>
 <body>
@@ -1200,7 +1175,7 @@ function renderFees(root){
   if(!t){ root.innerHTML = '<div class="panel"><div class="empty"><h4>No term set up</h4>' + (isAdmin() ? 'Add a term under Rates &amp; Terms.' : 'Ask the admin to add the school term.') + '</div></div>'; return; }
   const hol = t.holidays, rate = rateOn(todayISO());
   root.innerHTML = '<div class="panel"><div class="panel-head"><h3>Fees due vs paid</h3><span class="tag gold">' + escapeHtml(t.name+' '+t.year) + ' · KSh ' + rate + '/day</span></div>' +
-    '<div class="search-row"><select id="fPlan"><option value="termly">Termly</option><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="custom">Custom days</option></select>' +
+    '<div class="search-row"><select id="fPlan"><option value="termly">Termly</option><option value="monthly">Monthly (20 days)</option><option value="weekly">Weekly (5 days)</option><option value="custom">Custom days</option></select>' +
     '<input type="month" id="fMonth" value="' + todayISO().slice(0,7) + '" style="display:none"><input type="date" id="fWeek" value="' + startOfWeek(todayISO()) + '" style="display:none"><input type="number" id="fDays" value="10" min="1" style="display:none">' +
     '<input type="search" class="grow" id="fQ" placeholder="Search learner or admission no."></div>' +
     '<div class="helptext" id="fInfo" style="margin-bottom:10px"></div><div id="fTbl"></div></div>';
@@ -1208,14 +1183,14 @@ function renderFees(root){
     const p = val('fPlan'); ['fMonth','fWeek','fDays'].forEach(i => document.getElementById(i).style.display = 'none');
     let due = 0, label = '';
     if(p==='termly'){ const d = schoolDays(t.start, t.end, hol); due = fee(d); label = d.length+' school days in term'; }
-    if(p==='monthly'){ document.getElementById('fMonth').style.display=''; const m = val('fMonth'), last = new Date(Date.UTC(+m.slice(0,4), +m.slice(5), 0)).getUTCDate(); const d = schoolDays(m+'-01', m+'-'+String(last).padStart(2,'0'), hol); due = fee(d); label = d.length+' school days in '+m; }
-    if(p==='weekly'){ document.getElementById('fWeek').style.display=''; const s = new Date(val('fWeek')+'T00:00:00Z'); s.setUTCDate(s.getUTCDate()+4); const d = schoolDays(val('fWeek'), s.toISOString().slice(0,10), hol); due = fee(d); label = d.length+' school days in the week'; }
+    if(p==='monthly'){ due = DPM*rate; label = DPM+' school days (4 weeks x 5 days) per month'; }
+    if(p==='weekly'){ due = DPW*rate; label = DPW+' school days (Mon-Fri) per week'; }
     if(p==='custom'){ document.getElementById('fDays').style.display=''; due = (+val('fDays')||0) * rate; label = val('fDays')+' chosen days at current rate'; }
     document.getElementById('fInfo').textContent = label + ' · due per learner ' + fmtMoney(due) + '. "Days covered" uses the current daily rate; past payments are never changed.';
     const q = val('fQ').toLowerCase();
     const list = STATE.learners.filter(l => !q || l.name.toLowerCase().includes(q) || String(l.adm).toLowerCase().includes(q)).slice(0,300);
     document.getElementById('fTbl').innerHTML = tbl(['Learner','Class','Due','Paid','Remaining','Days covered'], list.map(l => { const rem = Math.max(0, due - l.balance);
-      return [escapeHtml(l.name), escapeHtml(l.klass||''), fmtMoney(due), fmtMoney(l.balance), '<span class="'+(rem?'balance-low':'balance-ok')+'">'+fmtMoney(rem)+'</span>', Math.floor(l.balance/rate)]; }));
+      return [escapeHtml(l.name), escapeHtml(l.klass||''), fmtMoney(due), fmtMoney(l.balance), '<span class="'+(rem?'balance-low':'balance-ok')+'">'+fmtMoney(rem)+'</span>', daysCov(l.balance,rate)]; }));
   };
   root.querySelectorAll('select,input').forEach(e => e.oninput = draw); draw();
 }
@@ -1268,7 +1243,7 @@ function renderTeachers(root){
 
 function renderRates(root){
   root.innerHTML = '<div class="grid cols-2"><div class="panel"><div class="panel-head"><h3>Daily meal rate</h3><span class="tag gold">Now KSh ' + rateOn(todayISO()) + '</span></div>' +
-    '<div class="field-row"><div class="field"><label>New rate (KSh)</label><input type="number" id="rR"></div><div class="field"><label>Effective from</label><input type="date" id="rD" value="' + todayISO() + '"></div></div>' +
+    '<div class="helptext" style="margin-bottom:10px"><b>Price guide:</b> 1 day = ' + fmtMoney(rateOn(todayISO())) + ' &middot; 1 week (5 days) = ' + fmtMoney(DPW*rateOn(todayISO())) + ' &middot; 1 month (20 days) = ' + fmtMoney(DPM*rateOn(todayISO())) + '</div>' + '<div class="field-row"><div class="field"><label>New rate (KSh)</label><input type="number" id="rR"></div><div class="field"><label>Effective from</label><input type="date" id="rD" value="' + todayISO() + '"></div></div>' +
     '<button class="btn btn-primary btn-sm" id="rSave">Set rate</button><div class="helptext">Fees are priced per school day at the rate in force on that day, so earlier payments are never altered.</div>' +
     '<div style="margin-top:12px">' + tbl(['Effective from','Rate'], D.rates.slice().reverse().map(r => [fmtDate(r.effective_from), fmtMoney(r.rate)])) + '</div></div>' +
     '<div class="panel"><div class="panel-head"><h3>Add term</h3></div><div class="field-row"><div class="field"><label>Year</label><input type="text" id="mY" value="2026"></div><div class="field"><label>Term name</label><input type="text" id="mN" placeholder="Term 3"></div></div>' +
@@ -1322,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
   box.innerHTML = logo + '<h2>EMBAKASI</h2><p>Garrison Comprehensive School · Meal Management System</p>' +
     '<div class="tabs" style="justify-content:center"><button id="tbT" class="active" style="color:#fff">Teacher</button><button id="tbA" style="color:#9fb8af">Admin</button></div>' +
     '<div class="login-error" id="lErr"></div>' +
-    '<div id="pT"><div class="login-field"><label>Registered phone number</label><input type="text" id="lPh" placeholder="07XXXXXXXX"></div><div class="login-field"><label>Assigned grade</label><input type="text" id="lGr" placeholder="e.g. 7B"></div>' +
+    '<div id="pT"><div class="login-field"><label>Registered phone number</label><input type="text" id="lPh" placeholder="07XXXXXXXX"></div><div class="login-field"><label>Assigned grade / class</label><input type="text" id="lGr" placeholder="e.g. 7B"></div>' +
     '<div class="login-field" id="lCodeW" style="display:none"><label>Access code (check your email)</label><input type="text" id="lCode" placeholder="6-digit code"></div></div>' +
     '<div id="pA" style="display:none"><div class="login-field"><label>Username</label><input type="text" id="lU"></div><div class="login-field"><label>Password</label><input type="password" id="lP"></div></div>' +
     '<button class="login-btn" id="lBtn">SEND ACCESS CODE</button>';
@@ -1409,12 +1384,6 @@ function applyTheme(t){ document.body.classList.toggle('dark', t === 'dark'); tr
 applyTheme((() => { try{ return localStorage.getItem('emb_theme') || 'light'; }catch(e){ return 'light'; } })());
 
 /* ---------- meal-credit status (assumes one meal per school day since term start) ---------- */
-function credit(l){
-  const t = currentTerm(), today = todayISO(); let spent = 0;
-  if(t && today >= t.start){ const e = today < t.end ? today : t.end; spent = fee(schoolDays(t.start, e, t.holidays)); }
-  const rate = rateOn(today) || 80, rem = Number(l.balance || 0) - spent;
-  return {rem, days:Math.max(0, Math.floor(rem / rate))};
-}
 function pstatus(l){ const d = credit(l).days; return d <= 0 ? {c:'out', t:'Exhausted', d} : d <= 2 ? {c:'low', t:'Low · ' + d + ' day' + (d === 1 ? '' : 's'), d} : {c:'ok', t:'Paid · ' + d + ' days', d}; }
 const badge = l => { const s = pstatus(l); return '<span class="sb ' + s.c + '">' + s.t + '</span>'; };
 
@@ -1602,12 +1571,137 @@ async function renderBackup(root){
 }
 EXT.backup = renderBackup; VIEW_TITLES.backup = ['Backup & Recovery', 'Private backups and record recovery'];
 
+
+/* ===================== SCHOOL THEME + MOBILE + FEE MATHS LAYER ===================== */
+const DPW = 5, DPM = 20; /* 5 school days per week (Mon-Fri); 1 month = 4 weeks = 20 days */
+const addDay = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+function daysCov(bal, rate){ const d = Math.floor(Number(bal || 0) / rate); return d + ' d \u00b7 ' + (d / DPW).toFixed(1).replace('.0', '') + ' wk'; }
+
+(function(){ const s = document.createElement('style'); s.textContent = `
+:root{--ink:#0B2B5B;--ink-2:#123A7A;--ink-3:#071D40;--paper:#F2F6FC;--maize:#F2A71B;--maize-dark:#CF8A0C;--leaf:#1F6FC0;--leaf-soft:#DCE9F8;--rust:#D7262E;--rust-soft:#FBE1E2;--charcoal:#14181F;--muted:#5F6B7D;--line:#DCE4F0;--shadow:0 1px 2px rgba(11,43,91,.07),0 8px 24px rgba(11,43,91,.09)}
+body.dark{--paper:#07152C;--card:#0E2347;--ink:#E6EEFB;--charcoal:#DCE6F7;--muted:#9DB0D0;--line:#1E3A6B;--leaf-soft:#15305E;--rust-soft:#3F1B22;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35)}
+body.dark .sidebar{background:#050F22}body.dark input,body.dark select,body.dark textarea{background:#12294F}body.dark tbody tr:hover{background:#12294F}
+.mealcard,.learner-print-sheet{--ink:#0B2B5B;--muted:#5F6B7D;--line:#DCE4F0}
+@keyframes bubbleUp{from{transform:translateY(0) translateX(0);opacity:0}15%{opacity:1}to{transform:translateY(-115vh) translateX(40px);opacity:0}}
+@keyframes twinkle{0%,100%{opacity:.2;transform:scale(.7) rotate(0)}50%{opacity:1;transform:scale(1.15) rotate(20deg)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@keyframes popIn{from{opacity:0;transform:translateY(22px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes waveMove{to{transform:translateX(-50%)}}
+.sidebar{background:linear-gradient(180deg,#0B2B5B,#071D40)}
+.brand{border-bottom:0;position:relative}.brand::after{content:"";position:absolute;left:20px;right:20px;bottom:0;height:4px;border-radius:4px;background:linear-gradient(90deg,#D7262E 0 30%,#F2A71B 30% 55%,#1F6FC0 55% 80%,#14181F 80%)}
+.brand p{color:#9DB8E0}nav.navlist button{color:#CFE0F7}nav.navlist button.active{background:var(--maize);color:#071D40}
+.topbar{border-top:4px solid;border-image:linear-gradient(90deg,#D7262E 0 25%,#F2A71B 25% 50%,#1F6FC0 50% 75%,#14181F 75%) 1}
+.tleft{display:flex;align-items:center;gap:10px;min-width:0}#menuBtn{display:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;width:42px;height:42px;font-size:20px;align-items:center;justify-content:center}
+.stat-card{border-left:4px solid var(--leaf)}.stat-card:nth-child(2){border-left-color:var(--rust)}.stat-card:nth-child(3){border-left-color:var(--maize)}.stat-card:nth-child(4){border-left-color:#14181F}
+.welcome{background:linear-gradient(120deg,#071D40,#1F6FC0 75%,#2C86DB)}.welcome::after{border-color:rgba(215,38,46,.55)}
+.pbar>i{background:linear-gradient(90deg,var(--leaf),var(--maize))}.chart-bars .bar{background:var(--leaf)}.chart-bars .bar.today{background:var(--rust)}
+.btn-primary{background:var(--maize);color:#071D40}.spinner{border-top-color:var(--rust)}.toast{border-left-color:var(--rust)}
+.tag.gold{background:#FDEFC9;color:#9A6A00}.is-loading::after{border-top-color:#071D40}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;opacity:0;pointer-events:none;transition:opacity .25s}.scrim.show{opacity:1;pointer-events:auto}
+#loginScreen{display:grid!important;grid-template-columns:1.1fr 1fr;background:var(--paper)!important;overflow:auto}
+#loginScreen .fl{display:none}
+.lhero{position:relative;overflow:hidden;grid-column:1;background:linear-gradient(150deg,#071D40 10%,#1F6FC0 125%);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center}
+.lhero .lg,.lhero .lgx{width:150px;height:150px;border-radius:34px;object-fit:contain;background:#fff;animation:bob 4s ease-in-out infinite;filter:drop-shadow(0 18px 24px rgba(0,0,0,.4));position:relative;z-index:2;display:flex;align-items:center;justify-content:center;font:700 44px 'Zilla Slab',serif;color:#0B2B5B}
+.lhero h1{color:#fff;font-size:30px;margin:20px 0 4px;position:relative;z-index:2}.lhero p{color:#CFE0F7;position:relative;z-index:2;max-width:330px;margin:0}
+.lhero .stripe{position:relative;z-index:2;display:flex;width:160px;height:6px;border-radius:6px;overflow:hidden;margin-top:16px}.stripe i{flex:1}
+.bubble{position:absolute;bottom:-100px;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.65),rgba(255,255,255,.08));border:1px solid rgba(255,255,255,.35);animation:bubbleUp linear infinite}
+.spark{position:absolute;color:#F2A71B;animation:twinkle 2.6s ease-in-out infinite}
+.waves{position:absolute;left:0;bottom:0;width:200%;height:90px;animation:waveMove 9s linear infinite;opacity:.9}
+.login-box{grid-column:2;justify-self:center;align-self:center;background:var(--card)!important;border:1px solid var(--line);backdrop-filter:none;box-shadow:var(--shadow);animation:popIn .6s cubic-bezier(.2,.8,.2,1) both}
+.login-box .login-logo{display:none}.login-box h2{color:var(--ink)}.login-box p{color:var(--muted)}.login-field label{color:var(--ink)}
+.login-field input{background:var(--paper)!important;color:var(--charcoal)!important;border:1px solid var(--line)!important}.login-field input::placeholder{color:#8794A8!important}
+.login-btn{background:var(--maize);color:#071D40}.login-btn:hover{background:#f7b941}.login-error{background:#FBE1E2;border-color:#F3B4B8;color:#B3182A}
+.login-box .tabs{border-bottom:0;gap:8px;margin-bottom:18px}.login-box .tabs button{flex:1;text-align:center;border-radius:10px;border:1px solid var(--line)!important;color:var(--muted)!important;padding:10px}
+.login-box .tabs button.active{background:var(--leaf);border-color:var(--leaf)!important;color:#fff!important}.pw button{color:var(--muted)}
+@media(max-width:860px){#loginScreen{grid-template-columns:1fr;grid-template-rows:auto 1fr}.lhero{min-height:210px;padding:22px}.lhero .lg,.lhero .lgx{width:84px;height:84px;border-radius:20px;font-size:28px}.lhero h1{font-size:22px;margin-top:12px}.lhero p{display:none}.login-box{grid-column:1;margin:-28px auto 24px;position:relative;z-index:3;padding:26px 22px}}
+.bnav,#moreSheet{display:none}
+@media(max-width:991px){
+ .sidebar{display:flex!important;position:fixed;left:0;top:0;bottom:0;height:100dvh;width:260px;max-width:84vw;z-index:1000;transform:translateX(-100%);transition:transform .25s ease}
+ .sidebar.open{transform:none;box-shadow:8px 0 30px rgba(0,0,0,.45)}#menuBtn{display:inline-flex}.content{width:100%}
+ .topbar{padding:10px 12px}.topbar h2{font-size:18px}.topbar .sub{display:none}.view{padding:14px 12px 90px}
+ #topbarActions .btn-ghost:not(.bell):not(#themeBtn){padding:6px 9px}
+ input,select,textarea{font-size:16px!important}.btn{min-height:40px}.btn-sm{min-height:36px}
+ .field-row{flex-wrap:wrap}.field-row>*{min-width:140px}
+ .modal-bg{align-items:flex-end!important;padding:0!important}.modal{width:100%!important;max-width:100%!important;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0!important}
+ body.cl .bnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:850;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));justify-content:space-around;box-shadow:0 -6px 20px rgba(0,0,0,.1)}
+ .bnav a{flex:1;text-align:center;color:var(--muted);font-size:.68rem;padding:5px 2px;border-radius:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}.bnav a b{display:block;font-size:1.35rem;line-height:1.15;font-weight:400}.bnav a.on{color:var(--leaf);font-weight:700}.bnav a.on b{transform:scale(1.15)}
+ body.cl .toast-wrap{bottom:84px;right:12px;left:12px}
+ #moreSheet{display:block;position:fixed;left:0;right:0;bottom:0;z-index:960;background:var(--card);color:var(--charcoal);border-radius:18px 18px 0 0;padding:14px 16px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .25s ease;box-shadow:0 -10px 40px rgba(0,0,0,.3)}#moreSheet.open{transform:none}
+ #moreSheet a{display:flex;gap:14px;align-items:center;padding:14px 4px;border-bottom:1px solid var(--line);font-size:15px}#moreSheet a:last-child{border:0;color:var(--rust)}#moreSheet a b{width:24px;text-align:center;font-weight:400}
+ .cols-4,.cols-3{grid-template-columns:1fr 1fr!important;gap:10px}.stat-card{padding:12px 13px}.stat-card .value{font-size:20px}.stat-card .label{font-size:10.5px}
+ .tabs{overflow-x:auto;gap:8px;border:0;padding-bottom:10px;scrollbar-width:none}.tabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:9px 15px;min-height:40px}.tabs button.active{background:var(--leaf);border-color:var(--leaf);color:#fff}
+ .panel{padding:16px 14px;border-radius:14px}.welcome{padding:16px 18px}
+}
+@media(max-width:760px){
+ table.rt thead{display:none}table.rt,table.rt tbody,table.rt tr,table.rt td{display:block;width:100%}
+ table.rt tr{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px 14px;margin-bottom:12px;box-shadow:var(--shadow);animation:viewIn .25s ease both}
+ table.rt td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 0;border:0;border-bottom:1px dashed var(--line);text-align:right;word-break:break-word}
+ table.rt td:last-child{border:0;flex-wrap:wrap;justify-content:flex-end}table.rt td::before{content:attr(data-label);color:var(--muted);font-size:.7rem;text-transform:uppercase;font-weight:600;letter-spacing:.04em;text-align:left;flex:0 0 auto}
+ table.rt td.nov{display:none}table.rt td.ttl{font-size:1.02rem;justify-content:flex-start;text-align:left}table.rt td.ttl::before{display:none}
+ table.rt td[data-label=""]::before{display:none}table.rt td[colspan]{display:block;text-align:center}
+}
+@media print{.bnav,#moreSheet,.scrim,#menuBtn{display:none!important}}
+`; document.head.appendChild(s); })();
+document.querySelector('meta[name="viewport"]').content = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
+
+/* ---------- login hero (bubbles, sparkles, waves, floating logo) ---------- */
+(function(){
+  const ls = $('loginScreen'), h = document.createElement('div'); h.className = 'lhero';
+  h.innerHTML = '<svg class="waves" viewBox="0 0 1200 90" preserveAspectRatio="none"><path d="M0 40C100 10 200 10 300 40S500 70 600 40 800 10 900 40 1100 70 1200 40V90H0z" fill="rgba(255,255,255,.14)"/></svg>' +
+    '<img class="lg" src="' + LOGO_URL + '" alt="" onerror="this.outerHTML=\'<div class=lgx>EG</div>\'"><h1>Embakasi Garrison</h1><p>Comprehensive School \u00b7 Meal Management System</p><div class="stripe"><i style="background:#D7262E"></i><i style="background:#F2A71B"></i><i style="background:#1F6FC0"></i><i style="background:#14181F"></i></div>';
+  for(let i = 0; i < 16; i++){ const b = document.createElement('div'), z = 14 + Math.random() * 56; b.className = 'bubble'; b.style.cssText = 'width:' + z + 'px;height:' + z + 'px;left:' + Math.random() * 100 + '%;animation-duration:' + (7 + Math.random() * 9) + 's;animation-delay:-' + Math.random() * 12 + 's'; h.appendChild(b); }
+  for(let i = 0; i < 7; i++){ const s = document.createElement('i'); s.className = 'spark'; s.textContent = '\u2726'; s.style.cssText = 'left:' + (8 + Math.random() * 84) + '%;top:' + (6 + Math.random() * 70) + '%;font-size:' + (14 + Math.random() * 20) + 'px;animation-delay:' + Math.random() * 2.6 + 's'; h.appendChild(s); }
+  ls.prepend(h);
+})();
+
+/* ---------- mobile sidebar: hamburger, scrim, close on outside tap / link / rotate ---------- */
+const side = document.querySelector('.sidebar'), scrim = document.createElement('div'); scrim.className = 'scrim'; document.body.appendChild(scrim);
+(function(){ const tb = document.querySelector('.topbar'), t = tb.firstElementChild, w = document.createElement('div'), m = document.createElement('button');
+  w.className = 'tleft'; m.id = 'menuBtn'; m.type = 'button'; m.setAttribute('aria-label', 'Menu'); m.innerHTML = '&#9776;'; tb.insertBefore(w, t); w.appendChild(m); w.appendChild(t); m.onclick = () => toggleSide(); })();
+function toggleSide(){ const o = side.classList.toggle('open'); scrim.classList.toggle('show', o); document.body.style.overflow = o ? 'hidden' : ''; }
+function closeSide(){ side.classList.remove('open'); scrim.classList.remove('show'); document.body.style.overflow = ''; closeMore(); }
+scrim.onclick = closeSide;
+$('nav').addEventListener('click', e => { if(e.target.closest('button')) closeSide(); });
+window.addEventListener('resize', () => { if(window.innerWidth >= 992) closeSide(); });
+window.addEventListener('orientationchange', closeSide);
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeSide(); });
+
+/* ---------- teacher phone layout: bottom nav + More sheet (same pattern as the cleaner portal) ---------- */
+const bn = document.createElement('nav'), more = document.createElement('div');
+bn.className = 'bnav'; more.id = 'moreSheet'; document.body.append(bn, more);
+const BN = [['dashboard', 'Home', '&#8962;'], ['learners', 'Learners', '&#9787;'], ['payments', 'Pay', '&#8383;'], ['fees', 'Fees', '&#8362;']];
+function openMore(){ const rest = NAV_ITEMS.filter(i => !BN.some(b => b[0] === i.id));
+  more.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b>More</b><button class="btn btn-ghost btn-sm" onclick="closeSide()">\u2715</button></div>' +
+    rest.map(i => '<a data-v="' + i.id + '"><b>' + i.icon + '</b>' + i.label + '</a>').join('') + '<a data-t="1"><b>&#9790;</b>Light / dark mode</a><a data-o="1"><b>&#10162;</b>Sign out</a>';
+  more.querySelectorAll('[data-v]').forEach(a => a.onclick = () => { closeMore(); setView(a.dataset.v); });
+  more.querySelector('[data-t]').onclick = () => { applyTheme(document.body.classList.contains('dark') ? 'light' : 'dark'); closeMore(); };
+  more.querySelector('[data-o]').onclick = () => logoutUser();
+  more.classList.add('open'); scrim.classList.add('show'); }
+function closeMore(){ more.classList.remove('open'); if(!side.classList.contains('open')) scrim.classList.remove('show'); }
+function markNav(v){ document.body.classList.toggle('cl', !isAdmin());
+  bn.innerHTML = BN.map(b => '<a data-k="' + b[0] + '" class="' + (v === b[0] ? 'on' : '') + '"><b>' + b[2] + '</b>' + b[1] + '</a>').join('') + '<a data-k="more" class="' + (BN.some(b => b[0] === v) ? '' : 'on') + '"><b>&#8943;</b>More</a>';
+  bn.querySelectorAll('a').forEach(a => a.onclick = () => a.dataset.k === 'more' ? openMore() : setView(a.dataset.k)); }
+const _sv3 = window.setView;
+window.setView = function(v){ closeSide(); _sv3(v); markNav(v); window.scrollTo(0, 0); };
+
+/* ---------- phone: turn every table row into a card (labels taken from the column headings) ---------- */
+function cardify(){ document.querySelectorAll('#viewRoot table:not(.rt),#modalRoot table:not(.rt)').forEach(t => {
+  const h = [...t.querySelectorAll('thead th')].map(x => x.textContent.trim()); t.classList.add('rt');
+  t.querySelectorAll('tbody tr').forEach(r => [...r.children].forEach((c, i) => { c.setAttribute('data-label', h[i] || ''); if(!c.textContent.trim() && !c.children.length) c.classList.add('nov'); if(h[i] === 'Name' || h[i] === 'Learner') c.classList.add('ttl'); })); }); }
+new MutationObserver(cardify).observe(document.body, {childList:true, subtree:true}); cardify();
+
+/* ---------- fee maths: week = 5 days, month = 20 days (4 weeks), meal days counted from first payment ---------- */
+let _fp = null, _fpN = -1;
+function credit(l){
+  if(!_fp || _fpN !== D.payments.length){ _fp = {}; _fpN = D.payments.length; D.payments.forEach(p => { if(p.status !== 'Rejected' && (!_fp[p.learner_id] || p.date < _fp[p.learner_id])) _fp[p.learner_id] = p.date; }); }
+  const t = currentTerm(), today = todayISO(), first = _fp[l.id]; let spent = 0;
+  if(t && first){ const s = first > t.start ? first : t.start, y = addDay(today, -1), e = y < t.end ? y : t.end; if(e >= s) spent = fee(schoolDays(s, e, t.holidays)); }
+  const rate = rateOn(today) || 80, rem = Number(l.balance || 0) - spent;
+  return {rem, days:Math.max(0, Math.floor(rem / rate))};
+}
+
 })();
 
 </script>
-  
-<footer class="login-footer">
-    Powered by <span>John_IT_Tech</span>
-</footer>
 </body>
 </html>
