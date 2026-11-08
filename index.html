@@ -1710,7 +1710,387 @@ function credit(l){
   const rate = rateOn(today) || 80, rem = Number(l.balance || 0) - spent;
   return {rem, days:Math.max(0, Math.floor(rem / rate))};
 }
+/* ===== FINANCE & ACADEMIC MODULE (v3) =====
+   Paste this INSIDE the portal IIFE: directly above its final closing line "})();" (right after the credit() function).
+   Replace the whole previous module with this one.
+   It needs api, D, sync, tbl, guard, val, $, loadScript etc. from that scope. */
+const FX = {a:[], f:[], b:[], pg:[], s:{academic_year:'2027', levy_amount:3750}, exited:[]};
+const ACC = {admission:'Admission Fee', levy:'Building Levy'};
+const FEE = {new:10000, progressive:5000};                       /* admission fee per category */
+const CAT = {new:'New Admission', progressive:'Progressive Admission'};
+const GRADES = ['PP1', 'PP2', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'];
+const ALL = () => STATE.learners.concat(FX.exited);
+const errMsg = e => (e && (e.message || e.error)) || (typeof e === 'string' && e) || 'The server returned no message. Check that this action exists in Code.gs.';
+function nextGrade(k){ k = String(k || '').trim(); let m;
+  if(m = k.match(/^PP\s*([12])(.*)$/i)) return m[1] === '1' ? 'PP2' + m[2] : 'Grade 1' + m[2];
+  if(m = k.match(/^(grade\s*)?(\d{1,2})(.*)$/i)){ const n = +m[2]; return n >= 9 ? null : (m[1] || '') + (n + 1) + m[3]; }
+  return undefined; }
 
+/* ---- FAST balances: one pass over bills and payments builds an index (rebuilt only when data changes) ---- */
+let _ix = null;
+const ixReset = () => { _ix = null; };
+const actP = p => p.status !== 'Voided';                        /* voided payments never count */
+function ix(){ if(_ix) return _ix; const m = {}, g = (id, a) => { const k = id + '|' + a; return m[k] || (m[k] = {b:0, p:0, n:0, last:''}); };
+  FX.b.forEach(x => { g(x.learner_id, x.account).b += Number(x.amount); });
+  FX.f.forEach(x => { if(!actP(x)) return; const e = g(x.learner_id, x.account); e.p += Number(x.amount); e.n++; const d = String(x.date || '').slice(0, 10); if(d > e.last) e.last = d; });
+  return _ix = m; }
+const bal = (id, acc) => { const e = ix()[id + '|' + acc] || {b:0, p:0, n:0, last:''}; return {b:e.b, p:e.p, r:e.b - e.p, n:e.n, last:e.last}; };
+const stOf = x => x.b <= 0 ? '' : x.r <= 0 ? 'Paid' : x.p > 0 ? 'Partial' : 'Not paid';
+const tot = acc => ALL().reduce((t, l) => { const x = bal(l.id, acc), s = stOf(x); if(!s) return t; t.b += x.b; t.p += x.p; t.r += x.r; t[s === 'Paid' ? 'paid' : s === 'Partial' ? 'part' : 'none']++; return t; }, {b:0, p:0, r:0, paid:0, part:0, none:0});
+const ST = {'Paid':'g', 'Partial':'y', 'Not paid':'r'};           /* green / yellow / red */
+const chip = s => s ? '<span class="fx-chip ' + ST[s] + '">' + s + '</span>' : '';
+const mini = x => { const p = x.b ? Math.min(100, Math.round(x.p / x.b * 100)) : 0; return '<div class="fx-mini"><i class="' + ST[stOf(x)] + '" style="width:' + p + '%"></i></div>'; };
+
+/* ---- admission categories: PP2 -> Grade 1 and Grade 6 -> Grade 7 are "progressive" (5,000); everything else is new (10,000) ---- */
+const gKey = s => { const m = String(s || '').trim().match(/^(pp\s*[12]|(?:grade\s*)?\d{1,2})/i); if(!m) return ''; let k = m[1].toLowerCase().replace(/\s+/g, ''); if(/^\d+$/.test(k)) k = 'grade' + k; return k; };
+const isProg = (from, to) => { const f = gKey(from), t = gKey(to); return (f === 'pp2' && t === 'grade1') || (f === 'grade6' && t === 'grade7'); };
+const catOf = (from, to, explicit) => { const e = String(explicit || ''); if(/prog/i.test(e)) return 'progressive'; if(/^new/i.test(e)) return 'new'; return isProg(from, to) ? 'progressive' : 'new'; };
+
+/* ---- styles for the new panels, animations and the green / yellow / red status chips ---- */
+(function(){ if(document.getElementById('fxCss')) return; const s = document.createElement('style'); s.id = 'fxCss'; s.textContent =
+  '@keyframes fxIn{from{opacity:0;transform:translateY(-14px) scale(.98)}to{opacity:1;transform:none}}' +
+  '@keyframes fxBar{0%{left:-40%}100%{left:100%}}' +
+  '@keyframes fxDraw{to{stroke-dashoffset:0}}' +
+  '@keyframes fxPop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}' +
+  '.fx-card{background:var(--card,#fff);border:1px solid var(--line,#e3e0d6);border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:0 8px 28px rgba(0,0,0,.09)}' +
+  '.fx-in{animation:fxIn .4s ease-out}.fx-pop{animation:fxPop .5s ease-out;display:inline-block}' +
+  '.fx-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}' +
+  '.fx-bar{position:relative;height:8px;border-radius:8px;background:rgba(128,128,128,.18);overflow:hidden;margin:14px 0}' +
+  '.fx-bar i{position:absolute;top:0;bottom:0;width:40%;border-radius:8px;background:var(--gold,#c8962e);animation:fxBar 1.1s ease-in-out infinite}' +
+  '.fx-ok{border-color:#2e7d4f}.fx-bad{border-color:#b3452b}.fx-center{text-align:center}' +
+  '.fx-msg{padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:14px;animation:fxIn .35s ease-out}.fx-msg.ok{background:rgba(46,125,79,.12);color:#2e7d4f}.fx-msg.bad{background:rgba(179,69,43,.12);color:#b3452b}' +
+  '.fx-chip{display:inline-block;padding:3px 11px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}' +
+  '.fx-chip.g{background:rgba(46,125,79,.16);color:#2e7d4f}.fx-chip.y{background:rgba(240,180,20,.24);color:#a57300}.fx-chip.r{background:rgba(179,69,43,.16);color:#b3452b}' +
+  '.fx-mini{height:6px;border-radius:6px;background:rgba(128,128,128,.2);margin-top:5px;overflow:hidden;min-width:70px}.fx-mini i{display:block;height:100%;border-radius:6px;transition:width .5s}' +
+  '.fx-mini i.g{background:#2e7d4f}.fx-mini i.y{background:#e0a500}.fx-mini i.r{background:#b3452b}' +
+  '.fx-stat{cursor:pointer;transition:transform .15s,box-shadow .15s}.fx-stat:hover{transform:translateY(-2px)}.fx-stat.on{outline:2px solid var(--gold,#c8962e)}';
+  document.head.appendChild(s); })();
+const tick = c => '<span class="fx-pop"><svg viewBox="0 0 52 52" width="64" height="64"><circle cx="26" cy="26" r="24" fill="none" stroke="' + c + '" stroke-width="3"/><path d="M14 27l8 8 16-17" fill="none" stroke="' + c + '" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="50" stroke-dashoffset="50" style="animation:fxDraw .6s .25s forwards"/></svg></span>';
+
+/* ---- data plumbing (exited learners are kept out of lunch lists but never lost). Loads learners and finance data IN PARALLEL ---- */
+const _ad = applyData;
+applyData = function(){ _ad(); const ex = STATE.learners.filter(l => l.status === 'Completed');
+  if(ex.length){ const m = {}; FX.exited.concat(ex).forEach(l => m[l.id] = l); FX.exited = Object.values(m); }
+  STATE.learners = STATE.learners.filter(l => l.status !== 'Completed'); };
+sync = async function(silent){
+  let pre = false; try{ pre = isAdmin(); }catch(e){}
+  const fp = pre ? api('finData', null, true).catch(() => null) : null;
+  D = await api('bootstrap', null, silent); FX.exited = []; applyData();
+  if(isAdmin()) try{ Object.assign(FX, (fp && await fp) || await api('finData', null, true)); }catch(e){}
+  ixReset(); };
+window.findLearner = id => STATE.learners.find(l => l.id === id) || FX.exited.find(l => l.id === id);
+
+/* ---- navigation ---- */
+buildNav = function(){ const A = isAdmin(), I = (id, label, icon) => ({id, label, icon}); NAV_ITEMS.length = 0;
+  NAV_ITEMS.push(I('dashboard', 'Dashboard', '&#9670;'), I('learners', 'Learners', '&#9787;'));
+  if(A) NAV_ITEMS.push(I('progress', 'Academic Year & Progression', '&#8679;'), I('admissions', 'Admissions & Interviews', '&#9998;'), I('finance', 'School Fees & Levies', '&#8362;'));
+  NAV_ITEMS.push(I('lunch', 'Lunch Program', '&#9749;'), I('cards', 'Meal Cards', '&#9635;'), I('reports', 'Reports', '&#9636;'));
+  if(A) NAV_ITEMS.push(I('settings', 'Settings', '&#9881;'), I('teachers', 'Teachers', '&#9786;'), I('rates', 'Rates & Terms', '&#9201;'), I('audit', 'Audit Log', '&#9776;'), I('backup', 'Backup & Recovery', '&#9729;')); };
+Object.assign(VIEW_TITLES, {progress:['Academic Year & Progression', 'Preview and confirm bulk progression'], admissions:['Admissions & Interviews', 'Register, import and admit learners'], finance:['School Fees & Levies', 'Installment payments, balances and status'], lunch:['Lunch Program', 'Wallets, payments and fees (unchanged)']});
+
+/* ---- Lunch hub: links to the untouched lunch views ---- */
+EXT.lunch = root => { root.innerHTML = '<div class="panel"><div class="panel-head"><h3>Lunch Program</h3><span class="tag gold">KSh ' + rateOn(todayISO()) + '/day</span></div><div class="helptext" style="margin-bottom:12px">Lunch wallets stay completely separate from admission fees and the building levy.</div><div class="grid cols-3">' +
+  [['payments', 'Record lunch payment', 'Verify a notification and credit a wallet'], ['fees', 'Lunch fees', 'Due, paid, remaining, days covered'], ['corrections', 'Payments & Corrections', 'Verify payments, review corrections']].map(x => '<div class="stat-card" style="cursor:pointer" data-go="' + x[0] + '"><div class="value" style="font-size:18px">' + x[1] + '</div><div class="helptext">' + x[2] + '</div></div>').join('') + '</div></div>';
+  root.querySelectorAll('[data-go]').forEach(e => e.onclick = () => setView(e.dataset.go)); };
+
+/* ---- Academic year & progression (confirmation lives INSIDE the page) ---- */
+let progTo = '', pgS = 'idle', pgR = null, pgE = '';
+EXT.progress = root => {
+  const cur = FX.s.academic_year, to = progTo || String(+cur + 1), g = {}, bad = [];
+  STATE.learners.forEach(l => { const n = nextGrade(l.klass); if(n === undefined) bad.push(l); else { const k = (l.klass || '') + '|' + (n === null ? 'Completed/Exited' : n); g[k] = (g[k] || 0) + 1; } });
+  const list = Object.entries(g).sort((a, b) => a[0].localeCompare(b[0], undefined, {numeric:true})), cnt = list.reduce((t, x) => t + x[1], 0), ex = list.filter(x => /Exited/.test(x[0])).reduce((t, x) => t + x[1], 0), mv = cnt - ex;
+  let card = '';
+  if(pgS === 'confirm') card = '<div class="fx-card fx-in"><h3>Confirm progression</h3><p>Move <b>' + mv + '</b> learners up one grade and exit <b>' + ex + '</b> Grade 9 learners. Academic year <b>' + escapeHtml(cur) + '</b> &rarr; <b>' + escapeHtml(to) + '</b>.</p><div class="helptext"></div><div class="fx-actions"><button class="btn btn-ghost" id="pgNo">Cancel</button><button class="btn btn-primary" id="pgYes">Yes, progress learners now</button></div></div>';
+  if(pgS === 'running') card = '<div class="fx-card fx-in"><h3>Progressing learners&hellip;</h3><div class="fx-bar"><i></i></div><div class="helptext">Taking a backup and moving learners. Please keep this page open.</div></div>';
+  if(pgS === 'done' && pgR) card = '<div class="fx-card fx-ok fx-in fx-center">' + tick('#2e7d4f') + '<h3 style="margin-top:8px">Progression complete</h3><p><b>' + pgR.moved + '</b> learners promoted &middot; <b>' + pgR.exited + '</b> exited &middot; now in academic year <b>' + escapeHtml(pgR.year) + '</b></p>' + (pgR.note ? '<div class="helptext">' + escapeHtml(pgR.note) + '</div>' : '') + '<div class="fx-actions" style="justify-content:center"><button class="btn btn-ghost" id="pgLr">View learners</button><button class="btn btn-primary" id="pgOk">Done</button></div></div>';
+  if(pgS === 'error') card = '<div class="fx-card fx-bad fx-in"><h3>Progression failed</h3><p>' + escapeHtml(pgE) + '</p><div class="helptext">Nothing was changed unless the message above says otherwise.</div><div class="fx-actions"><button class="btn btn-primary" id="pgOk">Close</button></div></div>';
+  const busy = pgS === 'confirm' || pgS === 'running';
+  root.innerHTML = card + '<div class="panel"><div class="panel-head"><h3>Academic year</h3><span class="tag gold">Current: ' + escapeHtml(cur) + '</span></div><div class="field" style="max-width:220px"><label>Progress to year</label><input type="number" id="pgY" value="' + escapeHtml(to) + '"' + (busy ? ' disabled' : '') + '></div><div class="helptext"></div></div>' +
+    '<div class="panel"><div class="panel-head"><h3>Preview &middot; ' + cnt + ' learners</h3><button class="btn btn-primary btn-sm" id="pgGo"' + (cnt && !busy ? '' : ' disabled') + '>Confirm progression</button></div>' +
+    tbl(['From', 'To', 'Learners'], list.map(([k, n]) => { const p = k.split('|'); return [escapeHtml(p[0]), escapeHtml(p[1]), n]; })) +
+    (bad.length ? '<div class="helptext" style="margin-top:10px;color:var(--rust)">' + bad.length + ' learner(s) have an unrecognised class and will stay unchanged: ' + escapeHtml(bad.slice(0, 8).map(l => l.name + ' (' + l.klass + ')').join(', ')) + '</div>' : '') + '</div>';
+  $('pgY').oninput = e => progTo = e.target.value;
+  $('pgGo').onclick = () => { if(!String($('pgY').value).trim()) return; progTo = $('pgY').value; pgS = 'confirm'; EXT.progress(root); };
+  if($('pgNo')) $('pgNo').onclick = () => { pgS = 'idle'; EXT.progress(root); };
+  if($('pgOk')) $('pgOk').onclick = () => { pgS = 'idle'; EXT.progress(root); };
+  if($('pgLr')) $('pgLr').onclick = () => { pgS = 'idle'; setView('learners'); };
+  if($('pgYes')) $('pgYes').onclick = async () => {
+    pgS = 'running'; EXT.progress(root); let note = '';
+    try{
+      try{ await api('runBackup', null, true); }catch(e){ note = 'Backup was skipped: ' + errMsg(e); }
+      const r = await api('progress', {to_year:to});
+      if(!r) throw new Error('The server returned nothing. Check the progress action in Code.gs.');
+      pgR = {moved:r.moved != null ? r.moved : mv, exited:r.exited != null ? r.exited : ex, year:String(to), note}; progTo = '';
+      await sync(); pgS = 'done';
+    }catch(e){ pgE = errMsg(e); pgS = 'error'; }
+    EXT.progress(root); }; };
+
+/* ---- Admissions & interviews: register one learner, import many, confirm -> learner appears in Learners ---- */
+const nk = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+const pk = (o, names) => { for(const k of Object.keys(o)) if(names.indexOf(nk(k)) > -1) return String(o[k] == null ? '' : o[k]).trim(); return ''; };
+async function readRows(f){
+  if(/\.xlsx?$/i.test(f.name)){ if(!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.read(await f.arrayBuffer(), {type:'array'}); return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''}); }
+  if(!window.Papa) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js');
+  return new Promise((res, rej) => Papa.parse(f, {header:true, skipEmptyLines:true, complete:x => res(x.data), error:e => rej(e)})); }
+const okResult = v => { v = String(v || '').trim().toLowerCase(); if(!v) return 'Passed'; return /^(pass|passed|p|yes|y|qualified|admit|admitted)$/.test(v) ? 'Passed' : 'Failed'; };
+const gradeOpts = '<datalist id="grList">' + GRADES.map(g => '<option value="' + g + '">').join('') + '</datalist>';
+let adTab = 'all', adQ = '', impRows = null, impBad = 0, impMsg = null;
+EXT.admissions = root => {
+  const q = adQ.toLowerCase(), all = FX.a.map(a => Object.assign({}, a, {cat:catOf(a.from_class, a.apply_grade, a.category)}));
+  const list = all.filter(a => (adTab === 'all' || (adTab === 'pending' ? a.status !== 'Admitted' : a.status === 'Admitted')) && (!q || (a.name + ' ' + a.ref + ' ' + (a.adm || '')).toLowerCase().includes(q)));
+  const pend = all.filter(a => a.status !== 'Admitted'), pn = pend.filter(a => a.cat === 'new').length, pp = pend.filter(a => a.cat === 'progressive').length;
+  root.innerHTML = (impMsg ? '<div class="fx-msg ' + (impMsg.ok ? 'ok' : 'bad') + '">' + escapeHtml(impMsg.t) + '</div>' : '') +
+    '<div class="grid cols-3" style="margin-bottom:16px"><div class="stat-card"><div class="label">New admission &middot; ' + fmtMoney(FEE.new) + '</div><div class="value">' + pn + '</div><div class="helptext">awaiting admission</div></div><div class="stat-card"><div class="label">Progressive (PP2&rarr;Gr 1, Gr 6&rarr;Gr 7) &middot; ' + fmtMoney(FEE.progressive) + '</div><div class="value">' + pp + '</div><div class="helptext">awaiting admission</div></div><div class="stat-card"><div class="label">Admitted</div><div class="value">' + all.filter(a => a.status === 'Admitted').length + '</div></div></div>' +
+    (impRows ? '<div class="fx-card fx-in"><h3>Import preview</h3><p><b>' + impRows.length + '</b> learners ready' + (impBad ? ' &middot; <span style="color:var(--rust)">' + impBad + ' row(s) skipped (missing name or applying grade)</span>' : '') + '. New admission: <b>' + impRows.filter(r => r.cat === 'new').length + '</b> &middot; Progressive: <b>' + impRows.filter(r => r.cat === 'progressive').length + '</b></p>' +
+      tbl(['Name', 'From', 'Applying for', 'Category', 'Result'], impRows.slice(0, 6).map(r => [escapeHtml(r.name), escapeHtml(r.from_class), escapeHtml(r.apply_grade), CAT[r.cat], escapeHtml(r.result)])) + (impRows.length > 6 ? '<div class="helptext">&hellip;and ' + (impRows.length - 6) + ' more</div>' : '') +
+      '<div class="fx-actions"><button class="btn btn-ghost" id="impNo">Cancel</button><button class="btn btn-primary" id="impGo">Import ' + impRows.length + ' learners</button></div></div>' : '') +
+    '<div class="panel"><div class="panel-head"><h3>Admissions &middot; ' + escapeHtml(FX.s.academic_year) + '</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="file" id="aFile" accept=".csv,.txt,.xls,.xlsx" style="display:none"><button class="btn btn-primary btn-sm" id="aReg">+ Register learner</button><button class="btn btn-ghost btn-sm" id="aImp">Import Excel / CSV</button><button class="btn btn-ghost btn-sm" id="aTpl">Template</button></div></div>' +
+    '<div class="helptext" style="margin-bottom:10px">Import columns: ref, name, gender, from_class, adm, apply_grade, result (Passed / Failed, blank = Passed), category (optional). Category is detected automatically: PP2&rarr;Grade 1 and Grade 6&rarr;Grade 7 are progressive (' + fmtMoney(FEE.progressive) + '), all others are new admissions (' + fmtMoney(FEE.new) + '). Confirming an admission places the learner straight into the Learners list under the grade applied for.</div>' +
+    '<div class="tabs"><button data-tb="all" class="' + (adTab === 'all' ? 'active' : '') + '">All</button><button data-tb="pending" class="' + (adTab === 'pending' ? 'active' : '') + '">Pending</button><button data-tb="done" class="' + (adTab === 'done' ? 'active' : '') + '">Admitted</button></div>' +
+    '<div class="search-row"><input type="search" class="grow" id="aQ" placeholder="Search name, ref or adm no." value="' + escapeHtml(adQ) + '"></div>' +
+    tbl(['Ref', 'Name', 'From', 'Applying for', 'Category', 'Result', 'Status', 'Fee', 'Admitted by', ''], list.map(a => [escapeHtml(a.ref), escapeHtml(a.name), escapeHtml(a.from_class), escapeHtml(a.apply_grade), '<span class="tag' + (a.cat === 'progressive' ? ' gold' : '') + '">' + CAT[a.cat] + '</span>',
+      stTag(a.result === 'Passed' ? 'Verified' : 'Rejected').replace(/>[^<]*</, '>' + escapeHtml(a.result) + '<'), a.status === 'Admitted' ? stTag('Approved').replace(/>[^<]*</, '>Admitted<') : stTag('Pending'), fmtMoney(a.fee || FEE[a.cat]),
+      a.admitted_by ? escapeHtml(a.admitted_by) + '<div class="helptext">' + escapeHtml(String(a.admitted_at).slice(0, 16).replace('T', ' ')) + (a.override_reason ? ' &middot; override: ' + escapeHtml(a.override_reason) : '') + '</div>' : '—',
+      a.status === 'Admitted' ? '' : '<button class="btn ' + (a.result === 'Passed' ? 'btn-primary' : 'btn-danger') + ' btn-sm" data-ad="' + a.id + '">' + (a.result === 'Passed' ? 'Admit' : 'Override admit') + '</button>'])) + '</div>';
+  impMsg = null;
+  root.querySelectorAll('[data-tb]').forEach(b => b.onclick = () => { adTab = b.dataset.tb; EXT.admissions(root); });
+  $('aQ').oninput = e => { adQ = e.target.value; EXT.admissions(root); const i = $('aQ'); i.focus(); i.setSelectionRange(adQ.length, adQ.length); };
+  $('aReg').onclick = () => openRegister(root);
+  $('aTpl').onclick = () => { const csv = 'ref,name,gender,from_class,adm,apply_grade,result,category\nINT001,Jane Wanjiru,Female,PP2,1234,Grade 1,Passed,\nINT002,John Otieno,Male,,,Grade 4,Passed,New\n', a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = 'admissions_template.csv'; a.click(); };
+  $('aImp').onclick = () => { $('aFile').value = ''; $('aFile').click(); };
+  $('aFile').onchange = async e => { const f = e.target.files[0]; if(!f) return;
+    try{
+      const raw = await readRows(f), rs = raw.map(o => { const r = {ref:pk(o, ['ref', 'refno', 'interviewno', 'indexno']), name:pk(o, ['name', 'fullname', 'learnername', 'learner']), gender:pk(o, ['gender', 'sex']), from_class:pk(o, ['fromclass', 'currentclass', 'previousclass', 'class']), adm:pk(o, ['adm', 'admno', 'admissionno', 'admissionnumber']), apply_grade:pk(o, ['applygrade', 'grade', 'applyinggrade', 'admittedgrade', 'classapplied', 'applyingfor']), result:okResult(pk(o, ['result', 'status', 'outcome'])), category:pk(o, ['category', 'type', 'admissiontype'])}; r.cat = catOf(r.from_class, r.apply_grade, r.category); r.category = CAT[r.cat]; r.fee = FEE[r.cat]; return r; }),
+        good = rs.filter(r => r.name && r.apply_grade); impBad = rs.length - good.length;
+      if(!good.length) throw new Error('No learners found. The file needs at least the columns "name" and "apply_grade" (grade applying for).');
+      impRows = good; EXT.admissions(root);
+    }catch(err){ impMsg = {ok:false, t:'Could not read the file: ' + errMsg(err)}; EXT.admissions(root); } };
+  if($('impNo')) $('impNo').onclick = () => { impRows = null; EXT.admissions(root); };
+  if($('impGo')) $('impGo').onclick = async () => { const b = $('impGo'); b.disabled = true; let added = 0, dup = 0;
+    try{
+      for(let i = 0; i < impRows.length; i += 50){ b.textContent = 'Importing ' + Math.min(i + 50, impRows.length) + ' / ' + impRows.length + '…';
+        const r = await api('importPassList', {rows:impRows.slice(i, i + 50), year:FX.s.academic_year}, true);
+        if(!r) throw new Error('The server returned nothing. Check that importPassList exists in Code.gs and the web app was redeployed.');
+        added += +r.added || 0; dup += +r.duplicates || 0; }
+      impRows = null; impMsg = {ok:true, t:added + ' imported · ' + dup + ' duplicates skipped'}; await sync();
+    }catch(err){ impMsg = {ok:false, t:'Import failed: ' + errMsg(err)}; }
+    EXT.admissions(root); };
+  root.querySelectorAll('[data-ad]').forEach(b => b.onclick = () => openAdmit(FX.a.find(x => x.id === b.dataset.ad), root)); };
+
+function admitDone(title, line){
+  closeModal();
+  openModal('<div class="fx-center">' + tick('#2e7d4f') + '<h3 style="margin-top:8px">' + escapeHtml(title) + '</h3><p>' + line + '</p></div><div class="modal-actions"><button class="btn btn-ghost" id="adX">Close</button><button class="btn btn-primary" id="adL">View in Learners</button></div>', () => {
+    $('adX').onclick = closeModal; $('adL').onclick = () => { closeModal(); setView('learners'); }; }); }
+
+function openRegister(root){
+  openModal('<h3>Register learner</h3>' + gradeOpts +
+    '<div class="field"><label>Full name</label><input type="text" id="rN"></div>' +
+    '<div class="field-row"><div class="field"><label>Gender</label><select id="rG"><option>Male</option><option>Female</option></select></div><div class="field"><label>Admission number</label><input type="text" id="rA" placeholder="Existing or new"></div></div>' +
+    '<div class="field-row"><div class="field"><label>Current class (if any)</label><input type="text" id="rF" list="grList"></div><div class="field"><label>Applying for</label><input type="text" id="rT" list="grList"></div></div>' +
+    '<div class="field"><label>Category</label><select id="rC"><option value="">Auto-detect</option><option value="new">New admission</option><option value="progressive">Progressive admission</option></select></div>' +
+    '<div class="helptext" id="rFee"></div><div class="fx-msg bad" id="rErr" style="display:none"></div>' +
+    '<div class="modal-actions"><button class="btn btn-ghost" id="rNo">Cancel</button><button class="btn btn-ghost" id="rSv">Save as pending</button><button class="btn btn-primary" id="rAd">Save &amp; admit now</button></div>', () => {
+    const upd = () => { const c = catOf($('rF').value, $('rT').value, $('rC').value); $('rFee').innerHTML = CAT[c] + ' &middot; admission fee <b>' + fmtMoney(FEE[c]) + '</b>'; };
+    ['rF', 'rT', 'rC'].forEach(i => { $(i).oninput = upd; $(i).onchange = upd; }); upd();
+    $('rNo').onclick = closeModal;
+    const bad = m => { const e = $('rErr'); e.textContent = m; e.style.display = 'block'; };
+    const go = async admit => {
+      const rec = {name:$('rN').value.trim(), gender:$('rG').value, adm:$('rA').value.trim(), from_class:$('rF').value.trim(), apply_grade:$('rT').value.trim(), result:'Passed', ref:'REG' + Date.now().toString().slice(-6), year:FX.s.academic_year};
+      rec.category = CAT[catOf(rec.from_class, rec.apply_grade, $('rC').value)]; rec.fee = FEE[catOf(rec.from_class, rec.apply_grade, $('rC').value)];
+      if(!rec.name || !rec.apply_grade) return bad('Enter the learner name and the grade being applied for.');
+      if(admit && !rec.adm) return bad('Enter an admission number to admit now.');
+      $('rSv').disabled = $('rAd').disabled = true;
+      try{
+        const r = await api('registerApplicant', rec, true);
+        if(!r || !r.applicant) throw new Error('The server returned nothing. Check that registerApplicant exists in Code.gs and the web app was redeployed.');
+        if(admit) await api('admit', {id:r.applicant.id, adm:rec.adm, override_reason:'', by:D.name}, true);
+        await sync();
+        if(admit){ admitDone('Learner admitted', escapeHtml(rec.name) + ' is now in <b>' + escapeHtml(rec.apply_grade) + '</b> · fee ' + fmtMoney(rec.fee)); } else { closeModal(); toast('Learner registered'); }
+        EXT.admissions(root);
+      }catch(e){ $('rSv').disabled = $('rAd').disabled = false; bad(errMsg(e)); } };
+    $('rSv').onclick = () => go(false); $('rAd').onclick = () => go(true); }); }
+
+function openAdmit(a, root){
+  const ex = a.adm && STATE.learners.find(l => String(l.adm) === String(a.adm)), ov = a.result !== 'Passed', c = catOf(a.from_class, a.apply_grade, a.category);
+  openModal('<h3>' + (ov ? 'Override admission' : 'Admit learner') + '</h3><p>' + escapeHtml(a.name) + ' &rarr; ' + escapeHtml(a.apply_grade) + '</p><div class="helptext" style="margin-bottom:10px">' + CAT[c] + ' &middot; admission fee <b>' + fmtMoney(FEE[c]) + '</b></div>' +
+    (ex ? '<div class="helptext">Existing learner &middot; Adm ' + escapeHtml(ex.adm) + ' &middot; ' + escapeHtml(ex.klass) + ' &rarr; will move to ' + escapeHtml(a.apply_grade) + '</div>' : '<div class="field"><label>Admission number</label><input type="text" id="aAdm" value="' + escapeHtml(a.adm || '') + '"></div>') +
+    (ov ? '<div class="field"><label>Override reason (required)</label><textarea id="aWhy" rows="3"></textarea></div>' : '') +
+    '<div class="fx-msg bad" id="aErr" style="display:none"></div><div class="helptext">The learner is added to the Learners list under ' + escapeHtml(a.apply_grade) + ' and the fee is billed automatically. Recorded as admitted by ' + escapeHtml(D.name) + '.</div><div class="modal-actions"><button class="btn btn-ghost" id="aNo">Cancel</button><button class="btn btn-primary" id="aGo">Confirm admission</button></div>', () => {
+      $('aNo').onclick = closeModal;
+      $('aGo').onclick = async () => {
+        const adm = $('aAdm') ? $('aAdm').value.trim() : String(a.adm || ''), why = $('aWhy') ? $('aWhy').value.trim() : '', bad = m => { const e = $('aErr'); e.textContent = m; e.style.display = 'block'; };
+        if(!adm) return bad('Enter the admission number.'); if(ov && !why) return bad('Enter the override reason.');
+        $('aGo').disabled = true;
+        try{ const r = await api('admit', {id:a.id, adm, override_reason:why, by:D.name}, true); if(!r) throw new Error('The server returned nothing. Check the admit action in Code.gs.');
+          await sync(); admitDone('Learner admitted', escapeHtml(a.name) + ' is now in <b>' + escapeHtml(a.apply_grade) + '</b> · fee ' + fmtMoney(FEE[c])); EXT.admissions(root);
+        }catch(e){ $('aGo').disabled = false; bad(errMsg(e)); } }; }); }
+
+/* ======================= SCHOOL FEES & LEVIES: installments ======================= */
+let fxTab = 'admission', fxQ = '', fxSt = 'all', fxCl = '', fxSort = 'name', fxLim = 100, fxT = null;
+EXT.finance = root => {
+  const T = fxTab, t = tot(T), q = fxQ.toLowerCase(), pct = t.b ? Math.round(t.p / t.b * 100) : 0;
+  const base = ALL().map(l => { const x = bal(l.id, T); return Object.assign({l, s:stOf(x)}, x); }).filter(x => x.b > 0);
+  const classes = Array.from(new Set(base.map(x => x.l.klass).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), undefined, {numeric:true}));
+  const list = base.filter(x => (fxSt === 'all' || x.s === fxSt) && (!fxCl || x.l.klass === fxCl) && (!q || x.l.name.toLowerCase().includes(q) || String(x.l.adm).includes(q)));
+  list.sort(fxSort === 'bal' ? (a, b) => b.r - a.r : (a, b) => String(a.l.name).localeCompare(String(b.l.name)));
+  const shown = list.slice(0, fxLim), sc = (k, label, n) => '<div class="stat-card fx-stat' + (fxSt === k ? ' on' : '') + '" data-st="' + k + '"><div class="label">' + label + '</div><div class="value">' + n + '</div>' + chip(k) + '</div>';
+  root.innerHTML = '<div class="tabs"><button data-t="admission" class="' + (T === 'admission' ? 'active' : '') + '">Admission Fee</button><button data-t="levy" class="' + (T === 'levy' ? 'active' : '') + '">Building Levy</button></div>' +
+    '<div class="grid cols-3" style="margin-bottom:12px"><div class="stat-card"><div class="label">Billed</div><div class="value">' + fmtMoney(t.b) + '</div></div><div class="stat-card"><div class="label">Collected &middot; ' + pct + '%</div><div class="value">' + fmtMoney(t.p) + '</div><div class="fx-mini"><i class="' + (pct >= 100 ? 'g' : pct > 0 ? 'y' : 'r') + '" style="width:' + pct + '%"></i></div></div><div class="stat-card"><div class="label">Outstanding</div><div class="value">' + fmtMoney(t.r) + '</div></div></div>' +
+    '<div class="grid cols-3" style="margin-bottom:16px">' + sc('Paid', 'Fully paid', t.paid) + sc('Partial', 'Partly paid (installments)', t.part) + sc('Not paid', 'Not paid', t.none) + '</div>' +
+    '<div class="panel"><div class="panel-head"><h3>' + ACC[T] + ' accounts</h3>' + (T === 'levy' ? '<button class="btn btn-primary btn-sm" id="fxBill">Bill levy in bulk</button>' : '') + '</div>' +
+    '<div class="tabs"><button data-st="all" class="' + (fxSt === 'all' ? 'active' : '') + '">All (' + base.length + ')</button><button data-st="Paid" class="' + (fxSt === 'Paid' ? 'active' : '') + '">Paid (' + t.paid + ')</button><button data-st="Partial" class="' + (fxSt === 'Partial' ? 'active' : '') + '">Partial (' + t.part + ')</button><button data-st="Not paid" class="' + (fxSt === 'Not paid' ? 'active' : '') + '">Not paid (' + t.none + ')</button></div>' +
+    '<div class="search-row"><input type="search" class="grow" id="fxQ" placeholder="Search learner or admission no." value="' + escapeHtml(fxQ) + '"><select id="fxC"><option value="">All classes</option>' + classes.map(c => '<option' + (c === fxCl ? ' selected' : '') + '>' + escapeHtml(c) + '</option>').join('') + '</select><select id="fxS"><option value="name"' + (fxSort === 'name' ? ' selected' : '') + '>Sort: name</option><option value="bal"' + (fxSort === 'bal' ? ' selected' : '') + '>Sort: highest balance</option></select></div>' +
+    tbl(['Learner', 'Class', 'Billed', 'Paid', 'Balance', 'Status', ''], shown.map(x => [escapeHtml(x.l.name) + '<div class="helptext">Adm ' + escapeHtml(x.l.adm) + '</div>', escapeHtml(x.l.klass || ''), fmtMoney(x.b), fmtMoney(x.p) + '<div class="helptext">' + x.n + ' payment' + (x.n === 1 ? '' : 's') + (x.last ? ' &middot; last ' + x.last : '') + '</div>', '<b>' + fmtMoney(x.r) + '</b>', chip(x.s) + mini(x),
+      (x.r > 0 ? '<button class="btn btn-primary btn-sm" data-pay="' + x.l.id + '">Update payment</button> ' : '') + '<button class="btn btn-ghost btn-sm" data-hist="' + x.l.id + '">History</button>'])) +
+    (list.length ? '' : '<div class="helptext" style="padding:14px">No learners match this filter.</div>') +
+    (list.length > shown.length ? '<div style="text-align:center;margin-top:12px"><button class="btn btn-ghost btn-sm" id="fxMore">Show more (' + (list.length - shown.length) + ' left)</button></div>' : '') + '</div>';
+  root.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { fxTab = b.dataset.t; fxSt = 'all'; fxCl = ''; fxLim = 100; EXT.finance(root); });
+  root.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { fxSt = fxSt === b.dataset.st ? 'all' : b.dataset.st; fxLim = 100; EXT.finance(root); });
+  $('fxQ').oninput = e => { fxQ = e.target.value; fxLim = 100; clearTimeout(fxT); fxT = setTimeout(() => { EXT.finance(root); const i = $('fxQ'); if(i){ i.focus(); i.setSelectionRange(fxQ.length, fxQ.length); } }, 180); };
+  $('fxC').onchange = e => { fxCl = e.target.value; fxLim = 100; EXT.finance(root); };
+  $('fxS').onchange = e => { fxSort = e.target.value; EXT.finance(root); };
+  if($('fxMore')) $('fxMore').onclick = () => { fxLim += 100; EXT.finance(root); };
+  root.querySelectorAll('[data-pay]').forEach(b => b.onclick = () => openFinPay(b.dataset.pay, T, root));
+  root.querySelectorAll('[data-hist]').forEach(b => b.onclick = () => openFinHist(b.dataset.hist, T, root));
+  if($('fxBill')) $('fxBill').onclick = () => openModal('<h3>Bill building levy</h3><div class="field-row"><div class="field"><label>Academic year</label><input type="text" id="lY" value="' + escapeHtml(FX.s.academic_year) + '"></div><div class="field"><label>Amount per learner (KSh)</label><input type="number" id="lA" value="' + (FX.s.levy_amount || 3750) + '"></div></div><div class="helptext">Bills every active learner. Learners already billed for this year are skipped, so nobody is billed twice.</div><div class="modal-actions"><button class="btn btn-ghost" id="lNo">Cancel</button><button class="btn btn-primary" id="lGo">Bill all</button></div>', () => {
+    $('lNo').onclick = closeModal;
+    $('lGo').onclick = guard(async () => { const r = await api('billLevy', {year:val('lY'), amount:val('lA')}); closeModal(); await sync(); toast(r.billed + ' billed · ' + r.skipped + ' already billed'); EXT.finance(root); }); }); };
+
+/* Update payment: add the next installment against the learner's bill.
+   Fields are found with data-q attributes (never ids) so they cannot clash with, or be cached from, any other form in the app. */
+const Q = k => { const n = document.querySelectorAll('[data-q="' + k + '"]'); return n[n.length - 1]; };
+const amt = v => { const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, '')); return isFinite(n) ? n : 0; };   /* accepts 2000, 2,000, "KSh 2000" */
+function openFinPay(id, acc, root){
+  const l = findLearner(id), x0 = bal(id, acc);
+  openModal('<h3>Update payment &middot; ' + ACC[acc] + '</h3><p><b>' + escapeHtml(l.name) + '</b> &middot; ' + escapeHtml(l.klass || '') + ' &middot; Adm ' + escapeHtml(l.adm) + '</p>' +
+    '<div class="grid cols-3" style="margin:10px 0"><div class="stat-card"><div class="label">Billed</div><div class="value" style="font-size:18px">' + fmtMoney(x0.b) + '</div></div><div class="stat-card"><div class="label">Paid so far</div><div class="value" style="font-size:18px">' + fmtMoney(x0.p) + '</div></div><div class="stat-card"><div class="label">Balance</div><div class="value" style="font-size:18px">' + fmtMoney(x0.r) + '</div></div></div>' +
+    '<div style="margin-bottom:12px">' + chip(stOf(x0)) + ' <span class="helptext">' + x0.n + ' payment' + (x0.n === 1 ? '' : 's') + ' so far</span>' + mini(x0) + '</div>' +
+    '<div class="field"><label>Amount received now (KSh)</label><input type="text" inputmode="numeric" autocomplete="off" data-q="amt" placeholder="e.g. 2000"></div><div style="margin:-6px 0 10px"><button class="btn btn-ghost btn-sm" data-q="full">Pay full balance (' + fmtMoney(x0.r) + ')</button></div>' +
+    '<div class="helptext" data-q="prev" style="margin-bottom:10px"></div>' +
+    '<div class="field-row"><div class="field"><label>Reference (M-Pesa code, optional)</label><input type="text" data-q="ref"></div><div class="field"><label>Date</label><input type="date" data-q="date" value="' + todayISO() + '"></div></div>' +
+    '<div class="field"><label>Note (optional)</label><input type="text" data-q="note" placeholder="e.g. 2nd installment, paid by mother"></div>' +
+    '<div class="fx-msg bad" data-q="err" style="display:none"></div>' +
+    '<div class="modal-actions"><button class="btn btn-ghost" data-q="no">Cancel</button><button class="btn btn-primary" data-q="go">Record payment</button></div>', () => {
+    const A = Q('amt'), P = Q('prev'), E = Q('err'), G = Q('go');
+    const upd = () => { const x = bal(id, acc), a = amt(A.value), after = x.r - a, s = after <= 0 ? 'Paid' : (x.p + a) > 0 ? 'Partial' : 'Not paid';
+      P.innerHTML = a > 0 ? (a > x.r + 0.5 ? '<span style="color:#b3452b">You entered ' + fmtMoney(a) + ' but the balance is only ' + fmtMoney(x.r) + '</span>' : 'Balance after this payment: <b>' + fmtMoney(after) + '</b> ' + chip(s)) : ''; };
+    A.oninput = upd; Q('full').onclick = () => { A.value = bal(id, acc).r; upd(); }; Q('no').onclick = closeModal;
+    const bad = m => { E.textContent = m; E.style.display = 'block'; };
+    G.onclick = async () => {
+      const x = bal(id, acc), a = amt(A.value); E.style.display = 'none';
+      if(!(a > 0)) return bad('Enter the amount received.');
+      if(a > x.r + 0.5) return bad('You entered ' + fmtMoney(a) + ' but the balance is only ' + fmtMoney(x.r) + '.');
+      G.disabled = true;
+      try{ const r = await api('finPayment', {learner_id:id, account:acc, amount:a, ref:Q('ref').value.trim(), date:Q('date').value, note:Q('note').value.trim()}, true);
+        if(!r || !r.payment) throw new Error('The server returned nothing. Check finPayment in Code.gs and that the web app was redeployed.');
+        FX.f.push(r.payment); ixReset(); payDone(l, acc, r.payment); EXT.finance(root);
+      }catch(e){ G.disabled = false; bad(errMsg(e)); } }; }); }
+
+function payDone(l, acc, p){
+  const x = bal(l.id, acc), s = stOf(x); closeModal();
+  openModal('<div class="fx-center">' + tick(s === 'Paid' ? '#2e7d4f' : '#e0a500') + '<h3 style="margin-top:8px">Payment recorded</h3><p><b>' + fmtMoney(p.amount) + '</b> received for ' + escapeHtml(l.name) + '</p><p>Paid ' + fmtMoney(x.p) + ' of ' + fmtMoney(x.b) + ' &middot; Balance <b>' + fmtMoney(x.r) + '</b></p><p>' + chip(s) + '</p></div><div class="modal-actions"><button class="btn btn-ghost" id="rcP">Print receipt</button><button class="btn btn-primary" id="rcX">Close</button></div>', () => {
+    $('rcX').onclick = closeModal;
+    $('rcP').onclick = () => doPrint('<div class="learner-print-sheet" style="max-width:480px"><h1>' + escapeHtml(STATE.settings.school_name) + '</h1><h2>Payment receipt</h2>' + tbl(['Item', 'Detail'], [['Learner', escapeHtml(l.name)], ['Adm no.', escapeHtml(l.adm)], ['Class', escapeHtml(l.klass || '')], ['Account', ACC[acc]], ['Date', escapeHtml(String(p.date).slice(0, 10))], ['Reference', escapeHtml(p.ref || '—')], ['Amount received', fmtMoney(p.amount)], ['Total billed', fmtMoney(x.b)], ['Total paid to date', fmtMoney(x.p)], ['Balance', fmtMoney(x.r)], ['Status', s]]) + '<p>Received by: ' + escapeHtml(p.recorded_by || D.name) + '</p></div>'); }); }
+
+/* Payment history with Edit / Void for correcting a wrong entry */
+function openFinHist(id, acc, root){
+  const l = findLearner(id), x = bal(id, acc), s = stOf(x), ps = FX.f.filter(p => p.learner_id === id && p.account === acc).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.created_at).localeCompare(String(b.created_at)));
+  openModal('<h3>Payment history &middot; ' + ACC[acc] + '</h3><p><b>' + escapeHtml(l.name) + '</b> &middot; ' + escapeHtml(l.klass || '') + '</p><div style="margin:8px 0 12px">' + chip(s) + ' <span class="helptext">Billed ' + fmtMoney(x.b) + ' &middot; Paid ' + fmtMoney(x.p) + ' &middot; Balance ' + fmtMoney(x.r) + '</span>' + mini(x) + '</div>' +
+    (ps.length ? tbl(['#', 'Date', 'Reference', 'Amount', 'By', 'Note', ''], ps.map((p, i) => [i + 1, escapeHtml(String(p.date).slice(0, 10)), escapeHtml(p.ref || '—'), p.status === 'Voided' ? '<s>' + fmtMoney(p.amount) + '</s> <span class="fx-chip r">Voided</span>' : fmtMoney(p.amount), escapeHtml(p.recorded_by || ''), escapeHtml(p.note || ''), p.status === 'Voided' ? '' : '<button class="btn btn-ghost btn-sm" data-ed="' + p.id + '">Edit</button> <button class="btn btn-danger btn-sm" data-vd="' + p.id + '">Void</button>'])) : '<div class="helptext">No payments recorded yet.</div>') +
+    '<div class="modal-actions"><button class="btn btn-ghost" id="hX">Close</button>' + (x.r > 0 ? '<button class="btn btn-primary" id="hP">Update payment</button>' : '') + '</div>', () => {
+    $('hX').onclick = closeModal; if($('hP')) $('hP').onclick = () => openFinPay(id, acc, root);
+    document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => openFinEdit(FX.f.find(p => p.id === b.dataset.ed), acc, root));
+    document.querySelectorAll('[data-vd]').forEach(b => b.onclick = () => openFinVoid(FX.f.find(p => p.id === b.dataset.vd), acc, root)); }); }
+
+function openFinEdit(p, acc, root){
+  const l = findLearner(p.learner_id), x = bal(p.learner_id, acc), max = x.r + Number(p.amount);
+  openModal('<h3>Edit payment</h3><p>' + escapeHtml(l.name) + ' &middot; the most this payment can be is <b>' + fmtMoney(max) + '</b></p>' +
+    '<div class="field"><label>Amount (KSh)</label><input type="text" inputmode="numeric" data-q="eamt" value="' + Number(p.amount) + '"></div><div class="field-row"><div class="field"><label>Reference</label><input type="text" data-q="eref" value="' + escapeHtml(p.ref || '') + '"></div><div class="field"><label>Date</label><input type="date" data-q="edate" value="' + escapeHtml(String(p.date).slice(0, 10)) + '"></div></div><div class="field"><label>Note</label><input type="text" data-q="enote" value="' + escapeHtml(p.note || '') + '"></div>' +
+    '<div class="fx-msg bad" data-q="eerr" style="display:none"></div><div class="modal-actions"><button class="btn btn-ghost" data-q="eno">Back</button><button class="btn btn-primary" data-q="ego">Save changes</button></div>', () => {
+    const E = Q('eerr'), G = Q('ego'), bad = m => { E.textContent = m; E.style.display = 'block'; };
+    Q('eno').onclick = () => openFinHist(p.learner_id, acc, root);
+    G.onclick = async () => { const a = amt(Q('eamt').value); E.style.display = 'none';
+      if(!(a > 0)) return bad('Enter a valid amount.'); if(a > max + 0.5) return bad('You entered ' + fmtMoney(a) + ' but the most this payment can be is ' + fmtMoney(max) + '.');
+      G.disabled = true;
+      try{ const r = await api('updateFinPayment', {id:p.id, amount:a, ref:Q('eref').value.trim(), date:Q('edate').value, note:Q('enote').value.trim()}, true);
+        if(!r || !r.payment) throw new Error('The server returned nothing. Check updateFinPayment in Code.gs and that the web app was redeployed.');
+        const i = FX.f.findIndex(z => z.id === p.id); FX.f[i] = Object.assign({}, FX.f[i], r.payment); ixReset(); toast('Payment updated'); EXT.finance(root); openFinHist(p.learner_id, acc, root);
+      }catch(e){ G.disabled = false; bad(errMsg(e)); } }; }); }
+
+function openFinVoid(p, acc, root){
+  openModal('<h3>Void payment</h3><p>' + fmtMoney(p.amount) + (p.ref ? ' &middot; ' + escapeHtml(p.ref) : '') + ' &middot; ' + escapeHtml(String(p.date).slice(0, 10)) + '</p><div class="helptext">The payment stays in the records marked <b>Voided</b> and no longer counts towards what the parent has paid.</div><div class="field"><label>Reason (required)</label><textarea rows="3" data-q="vwhy"></textarea></div><div class="fx-msg bad" data-q="verr" style="display:none"></div><div class="modal-actions"><button class="btn btn-ghost" data-q="vno">Back</button><button class="btn btn-danger" data-q="vgo">Void payment</button></div>', () => {
+    const E = Q('verr'), G = Q('vgo'), bad = m => { E.textContent = m; E.style.display = 'block'; };
+    Q('vno').onclick = () => openFinHist(p.learner_id, acc, root);
+    G.onclick = async () => { const w = Q('vwhy').value.trim(); E.style.display = 'none'; if(!w) return bad('Enter the reason.');
+      G.disabled = true;
+      try{ const r = await api('voidFinPayment', {id:p.id, reason:w}, true);
+        if(!r || !r.payment) throw new Error('The server returned nothing. Check voidFinPayment in Code.gs and that the web app was redeployed.');
+        const i = FX.f.findIndex(z => z.id === p.id); FX.f[i] = Object.assign({}, FX.f[i], r.payment); ixReset(); toast('Payment voided'); EXT.finance(root); openFinHist(p.learner_id, acc, root);
+      }catch(e){ G.disabled = false; bad(errMsg(e)); } }; }); }
+
+/* ---- per-learner financial records (3 independent accounts, with status colours) ---- */
+const _olp = window.openLearnerProfile;
+window.openLearnerProfile = function(id){
+  _olp(id); if(!isAdmin()) return; const l = findLearner(id), act = document.querySelector('#modalRoot .modal-actions'); if(!act) return;
+  const r = a => { const x = bal(id, a); return [ACC[a], fmtMoney(x.b), fmtMoney(x.p), fmtMoney(x.r), x.b > 0 ? chip(stOf(x)) : '—']; };
+  act.insertAdjacentHTML('beforebegin', '<h4 style="margin-top:14px;font-size:14px">Financial records (separate accounts)</h4>' + tbl(['Account', 'Billed', 'Paid', 'Balance', 'Status'], [r('admission'), r('levy'), ['Lunch Program', '—', fmtMoney(l.balance), daysCov(l.balance, rateOn(todayISO())), '']])); };
+
+/* ---- dashboard additions ---- */
+const _rd2 = window.renderDashboard;
+window.renderDashboard = function(root){
+  _rd2(root); if(!isAdmin()) return; const A = tot('admission'), L = tot('levy'), pend = FX.a.filter(x => x.result === 'Passed' && x.status !== 'Admitted').length, g = root.querySelector('.grid.cols-4'); if(!g) return;
+  const P = A.paid + L.paid, Pt = A.part + L.part, N = A.none + L.none;
+  g.insertAdjacentHTML('afterend', '<div class="grid cols-4" style="margin-bottom:18px">' + [['Admission fees collected', A.p, 'Outstanding ' + fmtMoney(A.r)], ['Building levy collected', L.p, 'Outstanding ' + fmtMoney(L.r)], ['Passed, awaiting admission', null, pend + ' learner' + (pend === 1 ? '' : 's')], ['Academic year', null, FX.s.academic_year]].map(c => '<div class="stat-card"><div class="label">' + c[0] + '</div><div class="value">' + (c[1] === null ? c[2] : fmtMoney(c[1])) + '</div>' + (c[1] === null ? '' : '<div class="delta down">' + c[2] + '</div>') + '</div>').join('') + '</div>' +
+    '<div class="grid cols-3" style="margin-bottom:18px">' + [['Fully paid accounts', 'Paid', P], ['Partly paid accounts', 'Partial', Pt], ['Not paid accounts', 'Not paid', N]].map(c => '<div class="stat-card"><div class="label">' + c[0] + '</div><div class="value">' + c[2] + '</div>' + chip(c[1]) + '</div>').join('') + '</div>'); };
+
+/* ======================= REPORTS ======================= */
+let repMode = 'lunch', repType = 'adm', repSt = 'all', repAcc = 'all', repFrom = '', repTo = '';
+const FR = {adm:'Admission fee statement (billed, paid, balance, status)', levy:'Building levy statement (billed, paid, balance, status)', led:'Payments ledger (every installment)', cls:'Collection by class', day:'Daily collections', def:'Outstanding balances (all accounts)', int:'Interview pass list & admitted learners', prog:'Learner progression by grade', exit:'Completed / Exited Grade 9 learners'};
+const M = n => ({t:n, h:fmtMoney(n)}), S = s => s ? {t:s, h:chip(s)} : '—';
+const cl = x => (x && typeof x === 'object' && x.h !== undefined) ? x.h : escapeHtml(x), pl = x => (x && typeof x === 'object' && x.t !== undefined) ? x.t : x;
+const byCls = (a, b) => String(a.klass || '').localeCompare(String(b.klass || ''), undefined, {numeric:true}) || String(a.name).localeCompare(String(b.name));
+function finRep(t){
+  const LM = {}; ALL().forEach(l => LM[l.id] = l);
+  const inR = d => { d = String(d || '').slice(0, 10); return (!repFrom || d >= repFrom) && (!repTo || d <= repTo); }, accOk = a => repAcc === 'all' || a === repAcc;
+  if(t === 'adm' || t === 'levy'){ const a = t === 'adm' ? 'admission' : 'levy';
+    const f = ALL().map(l => ({l, x:bal(l.id, a)})).filter(o => o.x.b > 0 && (repSt === 'all' || stOf(o.x) === repSt)).sort((p, q) => byCls(p.l, q.l)), T = f.reduce((s, o) => ({b:s.b + o.x.b, p:s.p + o.x.p, r:s.r + o.x.r, n:s.n + o.x.n}), {b:0, p:0, r:0, n:0});
+    return {c:['Learner', 'Adm', 'Class', 'Billed', 'Paid', 'Balance', 'Status', 'Payments', 'Last payment'], r:f.map(o => [o.l.name, o.l.adm, o.l.klass, M(o.x.b), M(o.x.p), M(o.x.r), S(stOf(o.x)), o.x.n, o.x.last || '—']).concat([['TOTAL', '', f.length + ' learners', M(T.b), M(T.p), M(T.r), '', T.n, '']])}; }
+  if(t === 'led'){ const f = FX.f.filter(p => accOk(p.account) && inR(p.date)).sort((a, b) => String(b.date).localeCompare(String(a.date))), sm = f.filter(actP).reduce((s, p) => s + Number(p.amount), 0);
+    return {c:['Date', 'Learner', 'Adm', 'Class', 'Account', 'Reference', 'Amount', 'Recorded by', 'Note', 'Status'], r:f.map(p => { const l = LM[p.learner_id] || {}; return [String(p.date).slice(0, 10), l.name || '?', l.adm || '', l.klass || '', ACC[p.account] || p.account, p.ref || '', M(Number(p.amount)), p.recorded_by || '', p.note || '', p.status === 'Voided' ? 'Voided' : 'Valid']; }).concat([['TOTAL (valid payments)', '', '', '', '', '', M(sm), '', '', '']])}; }
+  if(t === 'cls'){ const accs = repAcc === 'all' ? ['admission', 'levy'] : [repAcc], m = {};
+    ALL().forEach(l => accs.forEach(a => { const x = bal(l.id, a), s = stOf(x); if(!s) return; const c = m[l.klass || '—'] || (m[l.klass || '—'] = {ids:{}, b:0, p:0, r:0, pd:0, pt:0, nn:0}); c.ids[l.id] = 1; c.b += x.b; c.p += x.p; c.r += x.r; if(s === 'Paid') c.pd++; else if(s === 'Partial') c.pt++; else c.nn++; }));
+    const ks = Object.keys(m).sort((a, b) => a.localeCompare(b, undefined, {numeric:true})), T = {n:0, b:0, p:0, r:0, pd:0, pt:0, nn:0};
+    const rr = ks.map(k => { const c = m[k], n = Object.keys(c.ids).length; T.n += n; T.b += c.b; T.p += c.p; T.r += c.r; T.pd += c.pd; T.pt += c.pt; T.nn += c.nn; return [k, n, M(c.b), M(c.p), M(c.r), (c.b ? Math.round(c.p / c.b * 100) : 0) + '%', c.pd, c.pt, c.nn]; });
+    return {c:['Class', 'Learners billed', 'Billed', 'Collected', 'Outstanding', '% collected', 'Paid', 'Partial', 'Not paid'], r:rr.concat([['TOTAL', T.n, M(T.b), M(T.p), M(T.r), (T.b ? Math.round(T.p / T.b * 100) : 0) + '%', T.pd, T.pt, T.nn]])}; }
+  if(t === 'day'){ const m = {}; FX.f.filter(p => actP(p) && accOk(p.account) && inR(p.date)).forEach(p => { const d = String(p.date).slice(0, 10), c = m[d] || (m[d] = {n:0, a:0, l:0}); c.n++; if(p.account === 'admission') c.a += Number(p.amount); else c.l += Number(p.amount); });
+    const ks = Object.keys(m).sort().reverse(), T = ks.reduce((s, k) => ({n:s.n + m[k].n, a:s.a + m[k].a, l:s.l + m[k].l}), {n:0, a:0, l:0});
+    return {c:['Date', 'Payments', 'Admission fee', 'Building levy', 'Total'], r:ks.map(k => [k, m[k].n, M(m[k].a), M(m[k].l), M(m[k].a + m[k].l)]).concat([['TOTAL', T.n, M(T.a), M(T.l), M(T.a + T.l)]])}; }
+  if(t === 'def'){ const f = ALL().map(l => ({l, a:bal(l.id, 'admission'), v:bal(l.id, 'levy')})).map(o => Object.assign(o, {tr:Math.max(o.a.r, 0) + Math.max(o.v.r, 0)})).filter(o => o.tr > 0).sort((p, q) => q.tr - p.tr), T = f.reduce((s, o) => s + o.tr, 0);
+    return {c:['Learner', 'Adm', 'Class', 'Admission balance', 'Admission status', 'Levy balance', 'Levy status', 'Total balance'], r:f.map(o => [o.l.name, o.l.adm, o.l.klass, M(Math.max(o.a.r, 0)), S(stOf(o.a)), M(Math.max(o.v.r, 0)), S(stOf(o.v)), M(o.tr)]).concat([['TOTAL', '', f.length + ' learners', '', '', '', '', M(T)]])}; }
+  if(t === 'int') return {c:['Ref', 'Name', 'From', 'Applied', 'Result', 'Status', 'Fee', 'Category', 'Admitted by', 'Admitted at', 'Override reason'], r:FX.a.map(a => [a.ref, a.name, a.from_class, a.apply_grade, a.result, a.status, a.fee, a.category, a.admitted_by, String(a.admitted_at || '').slice(0, 16).replace('T', ' '), a.override_reason])};
+  if(t === 'prog'){ const m = {}; FX.pg.forEach(p => { const k = p.year_from + ' → ' + p.year_to + ' | ' + p.from_grade + ' → ' + (p.to_grade || 'Completed/Exited'); m[k] = (m[k] || 0) + 1; }); return {c:['Year | Movement', 'Learners'], r:Object.entries(m).sort()}; }
+  return {c:['Learner', 'Adm', 'Last class', 'Lunch balance (KSh)'], r:FX.exited.map(l => [l.name, l.adm, l.klass, l.balance || 0])}; }
+function drawFinRep(){
+  const el = $('frB'), d = finRep(repType), needSt = repType === 'adm' || repType === 'levy', needAcc = repType === 'led' || repType === 'cls' || repType === 'day', needDt = repType === 'led' || repType === 'day';
+  const sel = (id, v, opts) => '<select id="' + id + '">' + opts.map(o => '<option value="' + o[0] + '"' + (o[0] === v ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
+  el.innerHTML = '<div class="panel"><div class="search-row" style="flex-wrap:wrap"><select id="frT" class="grow">' + Object.keys(FR).map(k => '<option value="' + k + '"' + (k === repType ? ' selected' : '') + '>' + FR[k] + '</option>').join('') + '</select>' +
+    (needSt ? sel('frS', repSt, [['all', 'All statuses'], ['Paid', 'Paid (green)'], ['Partial', 'Partial (yellow)'], ['Not paid', 'Not paid (red)']]) : '') +
+    (needAcc ? sel('frA', repAcc, [['all', 'Both accounts'], ['admission', 'Admission fee'], ['levy', 'Building levy']]) : '') +
+    (needDt ? '<label class="helptext">From <input type="date" id="frF" value="' + repFrom + '"></label><label class="helptext">To <input type="date" id="frTo" value="' + repTo + '"></label>' : '') +
+    '<button class="btn btn-ghost btn-sm" id="frCsv">Export CSV</button><button class="btn btn-ghost btn-sm" id="frPr">Print / PDF</button></div>' + tbl(d.c, d.r.map(r => r.map(cl))) + '</div>';
+  $('frT').onchange = e => { repType = e.target.value; drawFinRep(); };
+  if($('frS')) $('frS').onchange = e => { repSt = e.target.value; drawFinRep(); };
+  if($('frA')) $('frA').onchange = e => { repAcc = e.target.value; drawFinRep(); };
+  if($('frF')) $('frF').onchange = e => { repFrom = e.target.value; drawFinRep(); };
+  if($('frTo')) $('frTo').onchange = e => { repTo = e.target.value; drawFinRep(); };
+  $('frCsv').onclick = () => { const csv = [d.c].concat(d.r.map(r => r.map(pl))).map(r => r.map(c => '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"').join(',')).join('\n'), a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = repType + '_report_' + todayISO() + '.csv'; a.click(); };
+  $('frPr').onclick = () => doPrint('<div class="learner-print-sheet" style="max-width:none"><h1>' + escapeHtml(STATE.settings.school_name) + '</h1><h2>' + FR[repType] + '</h2><div class="helptext">Printed ' + todayISO() + (repFrom || repTo ? ' &middot; ' + (repFrom || '…') + ' to ' + (repTo || '…') : '') + '</div>' + tbl(d.c, d.r.map(r => r.map(cl))) + '</div>'); }
+const _rr = window.renderReports;
+window.renderReports = function(root){
+  if(!isAdmin()){ _rr(root); return; }
+  const sw = '<div class="tabs"><button data-m="lunch" class="' + (repMode === 'lunch' ? 'active' : '') + '">Lunch reports</button><button data-m="fin" class="' + (repMode === 'fin' ? 'active' : '') + '">Fees, Levies, Admissions &amp; Progression</button></div>';
+  if(repMode === 'lunch'){ _rr(root); root.insertAdjacentHTML('afterbegin', sw); } else { root.innerHTML = sw + '<div id="frB"></div>'; drawFinRep(); }
+  root.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { repMode = b.dataset.m; window.renderReports(root); }); };
 })();
 
 </script>
